@@ -27,6 +27,9 @@
     <header class="flex items-center justify-end gap-4 pb-4 mb-6 border-b border-[#e8e8ed] text-[13px] text-[#86868b]">
       <span>기준일 <span id="anchorDate" class="text-[#1d1d1f] font-semibold">—</span></span>
       <span>리서치 <span id="reportCount" class="text-[#1d1d1f] font-semibold">—</span>건</span>
+      <span class="text-[#c7c7cc]">|</span>
+      <span>마지막 조회 <span id="lastFetch" class="text-[#1d1d1f] font-semibold">—</span></span>
+      <button id="refreshBtn" class="chip text-[13px] px-3 py-1.5 rounded-full bg-white border border-[#d2d2d7] text-[#1d1d1f] font-medium">🔄 새로고침</button>
     </header>
 
     <!-- ① 시황 · KRX 시장 수급 -->
@@ -252,7 +255,7 @@ function dossierHtml(f){
   return (body||srcHtml)?`<div class="mt-2 pt-2 border-t border-[#e8e8ed] space-y-1">${body}${srcHtml}</div>`:"";
 }
 function renderFlowLink(){
-  fetch("/api/flow_link?days=45").then(r=>r.json()).then(d=>{
+  return fetch("/api/flow_link?days=45").then(r=>r.json()).then(d=>{
     const ff=document.getElementById("flowFocus");
     if(d.error){ ff.innerHTML=`<p class="text-[#86868b] text-xs">${d.error}</p>`; return; }
     document.getElementById("flowRegime").textContent=`· 주도: ${d.regime} · 최근 ${d.window}영업일`;
@@ -305,7 +308,7 @@ function copyRequest(){
 }
 
 function renderPriority(){
-  fetch("/api/brief?days=45").then(r=>r.json()).then(b=>{
+  return fetch("/api/brief?days=45").then(r=>r.json()).then(b=>{
     const wrap=document.getElementById("briefSegments");
     if(b.error){ wrap.innerHTML=`<p class="text-[#86868b] text-xs">${b.error}</p>`; return; }
     document.getElementById("briefRegime").textContent=`· 시황: ${b.regime.dominant} 주도 (${b.regime_risk})`;
@@ -346,14 +349,17 @@ async function renderTalkingPoints(){
       : '<li class="text-[#86868b]">감지된 시나리오 없음</li>';
   }catch(e){}
 }
-async function init(){
-  renderKrx();
-  renderFlowLink();
-  renderPriority();
-  renderTalkingPoints();
+async function refreshAll(){
+  const b=document.getElementById("refreshBtn"), o="🔄 새로고침";
+  if(b){ b.disabled=true; b.textContent="⏳ 갱신 중…"; }
+  try{ await Promise.all([renderKrx(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
+  document.getElementById("lastFetch").textContent = new Date().toTimeString().slice(0,8);
+  if(b){ b.disabled=false; b.textContent=o; }
 }
 document.getElementById("reqCopy").addEventListener("click", copyRequest);
-init();
+document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+setInterval(refreshAll, 600000);   // 10분마다 자동 새로고침 (열어둔 채 07:30 갱신 자동 반영)
+refreshAll();
 </script>
 </body>
 </html>
