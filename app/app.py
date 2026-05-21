@@ -9,12 +9,16 @@ KR WM Research Cockpit — 시황 → 필요 컨텐츠 → 고객 관리 우선�
 """
 from __future__ import annotations
 
+import datetime
+import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
 APP_DIR = Path(__file__).resolve().parent
+ROOT = APP_DIR.parent
 sys.path.insert(0, str(APP_DIR / "core" / "engine"))
 sys.path.insert(0, str(APP_DIR / "core" / "adapters"))
 import scenario_engine as se   # noqa: E402
@@ -22,6 +26,23 @@ import krx_market              # noqa: E402
 
 app = Flask(__name__, template_folder=str(APP_DIR / "templates"))
 PORT = 8768
+
+# 데이터 수집(크롤+KRX+LLM) 비동기 실행 상태 — '데이터 수집·반영' 버튼용
+COLLECT = {"running": False, "started": None, "finished": None, "rc": None, "error": None}
+
+
+def _run_collect() -> None:
+    COLLECT.update(running=True, started=datetime.datetime.now().strftime("%H:%M:%S"),
+                   finished=None, rc=None, error=None)
+    try:
+        r = subprocess.run([sys.executable, str(ROOT / "daily_update.py")],
+                           cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
+        COLLECT["rc"] = r.returncode
+    except Exception as e:   # noqa: BLE001
+        COLLECT["error"], COLLECT["rc"] = str(e)[:200], -1
+    finally:
+        COLLECT["running"] = False
+        COLLECT["finished"] = datetime.datetime.now().strftime("%H:%M:%S")
 
 
 @app.route("/")
@@ -54,6 +75,20 @@ def api_brief():
     """③ 고객 관리 우선순위: 시황 기반 고객 세그먼트 우선순위 + 쏠림 경보."""
     days = request.args.get("days", default=45, type=int)
     return jsonify(se.contact_priority(days=days))
+
+
+@app.route("/api/collect", methods=["POST"])
+def api_collect():
+    """데이터 수집(크롤+KRX+LLM 도시에) 비동기 시작. 이미 실행 중이면 중복 방지."""
+    if COLLECT["running"]:
+        return jsonify({"status": "running", **COLLECT})
+    threading.Thread(target=_run_collect, daemon=True).start()
+    return jsonify({"status": "started", **COLLECT})
+
+
+@app.route("/api/collect/status")
+def api_collect_status():
+    return jsonify(COLLECT)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,8 @@
       <span>리서치 <span id="reportCount" class="text-[#1d1d1f] font-semibold">—</span>건</span>
       <span class="text-[#c7c7cc]">|</span>
       <span>마지막 조회 <span id="lastFetch" class="text-[#1d1d1f] font-semibold">—</span></span>
-      <button id="refreshBtn" class="chip text-[13px] px-3 py-1.5 rounded-full bg-white border border-[#d2d2d7] text-[#1d1d1f] font-medium">🔄 새로고침</button>
+      <span id="collectMsg" class="text-[#86868b]"></span>
+      <button id="refreshBtn" title="당사·타사 리서치 크롤 + KRX 수급 + 종목 도시에(LLM)를 새로 수집 (수 분 소요)" class="chip text-[13px] px-3 py-1.5 rounded-full bg-white border border-[#d2d2d7] text-[#1d1d1f] font-medium">🔄 데이터 수집·반영</button>
     </header>
 
     <!-- ① 시황 · KRX 시장 수급 -->
@@ -349,17 +350,39 @@ async function renderTalkingPoints(){
       : '<li class="text-[#86868b]">감지된 시나리오 없음</li>';
   }catch(e){}
 }
-async function refreshAll(){
-  const b=document.getElementById("refreshBtn"), o="🔄 새로고침";
-  if(b){ b.disabled=true; b.textContent="⏳ 갱신 중…"; }
+async function refreshAll(){   // 캐시 재조회(가벼움) → 화면 반영
   try{ await Promise.all([renderKrx(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
   document.getElementById("lastFetch").textContent = new Date().toTimeString().slice(0,8);
-  if(b){ b.disabled=false; b.textContent=o; }
+}
+let POLLING=false;
+function setBtn(txt, dis){ const b=document.getElementById("refreshBtn"); if(b){ b.textContent=txt; b.disabled=dis; } }
+async function pollCollect(){
+  let st; try{ st=await (await fetch("/api/collect/status")).json(); }catch(e){ st={running:false}; }
+  const msg=document.getElementById("collectMsg");
+  if(st.running){
+    setBtn("⏳ 수집 중…", true);
+    if(msg) msg.textContent = `수집 중 (시작 ${st.started||""}) · 수 분 소요`;
+    setTimeout(pollCollect, 4000);
+  } else {
+    POLLING=false;
+    await refreshAll();   // 새로 수집된 데이터 화면 반영
+    setBtn("🔄 데이터 수집·반영", false);
+    if(msg) msg.textContent = st.finished ? ((st.rc===0||st.rc==null)?`✅ 수집 완료 ${st.finished}`:`⚠️ 일부 실패 ${st.finished}`) : "";
+  }
+}
+async function collectData(){
+  if(POLLING) return;
+  POLLING=true; setBtn("⏳ 수집 시작…", true);
+  const msg=document.getElementById("collectMsg"); if(msg) msg.textContent="";
+  try{ await fetch("/api/collect", {method:"POST"}); }catch(e){}
+  pollCollect();
 }
 document.getElementById("reqCopy").addEventListener("click", copyRequest);
-document.getElementById("refreshBtn").addEventListener("click", refreshAll);
-setInterval(refreshAll, 3600000);   // 1시간마다 자동 새로고침 (열어둔 채 07:30 갱신 자동 반영)
+document.getElementById("refreshBtn").addEventListener("click", collectData);
+setInterval(refreshAll, 3600000);   // 1시간마다 캐시 재조회(가벼움). 데이터 수집은 버튼/07:30 배치.
 refreshAll();
+// 진행 중인 수집(버튼 트리거)이 있으면 상태 이어받기
+fetch("/api/collect/status").then(r=>r.json()).then(st=>{ if(st.running){ POLLING=true; pollCollect(); } }).catch(()=>{});
 </script>
 </body>
 </html>
