@@ -77,15 +77,13 @@ def _llm_summarize(name: str, ticker: str, house: list, others: list) -> dict:
         "그 자체로 쓰지 말 것. 반드시 **무엇인지 구체적으로** 적시(예: 미국 관세율 인상, 원/달러 환율, 메모리 공급병목, "
         "NAND 가격, MS사업부 적자, 중동 종전, 천궁-II 납품, 특정 사업부/제품/수치).\n"
         "  - 견해차는 **증권사명 + 구체 근거(목표가 숫자·강조 포인트)**로. 단순 '낙관/신중 갈림'은 금지.\n"
-        "  - 본문에 구체 근거가 없는 항목은 지어내지 말고 \"특이 견해차 없음\"(gap) / \"예정된 일정 없음\"(catalysts)로 짧게.\n"
+        "  - 본문에 구체 근거가 없으면 지어내지 말고 gap은 \"대체로 의견 일치\"로 짧게.\n"
         "  - 각 항목 1~2문장, 본문에 없는 사실 창작 금지.\n"
         'JSON으로만: {'
         '"opportunity":"기회 요인(구체 수치·사건)",'
         '"risk":"리스크 요인(무엇이 위험인지 구체적으로)",'
-        '"gap_opportunity":"기회 견해차 — 증권사명+목표가/강조점 구체. 없으면 \'특이 견해차 없음\'",'
-        '"gap_risk":"리스크 견해차 — 증권사명+구체 근거. 없으면 \'특이 견해차 없음\'",'
-        '"catalysts":"향후 이벤트(날짜·이벤트명 구체). 없으면 \'예정된 일정 없음\'"}'
-        " (당사 리포트 없으면 gap_* 는 \'당사 커버리지 없음 — 타사 견해만\')"
+        '"gap":"당사(미래에셋) vs 타사 의견 차이 — 증권사명+목표가 숫자+강조점으로 구체적으로. '
+        '당사 리포트 없으면 \'당사 커버리지 없음 — 타사 목표가 범위 X~Y\'. 차이가 없으면 \'대체로 의견 일치\'"}'
     )
     try:
         resp = client.chat.completions.create(
@@ -107,16 +105,14 @@ def build(ticker: str, name: str = "", force: bool = False) -> dict:
         return cache[ticker]
     g = kr_research.gather(ticker, name)
     if not g["house"] and not g["others"]:   # 리서치 0건 → LLM 호출/창작 금지
-        summ = {"opportunity": "리서치 자료 없음", "risk": "", "gap_opportunity": "리서치 자료 없음",
-                "gap_risk": "", "catalysts": ""}
+        summ = {"opportunity": "리서치 자료 없음", "risk": "", "gap": "리서치 자료 없음"}
     else:
         summ = _llm_summarize(g["name"], ticker, g["house"], g["others"])
     rec = {"ticker": ticker, "name": g["name"], "date": today,
            "has_house": g["has_house"], "n_others": g["n_others"],
            "house": g["house"], "others": g["others"],
            "opportunity": summ.get("opportunity", ""), "risk": summ.get("risk", ""),
-           "gap_opportunity": summ.get("gap_opportunity", ""), "gap_risk": summ.get("gap_risk", ""),
-           "catalysts": summ.get("catalysts", ""), "llm_error": summ.get("error", "")}
+           "gap": summ.get("gap", ""), "llm_error": summ.get("error", "")}
     cache[ticker] = rec
     _save_cache(cache)
     return rec
@@ -132,6 +128,4 @@ if __name__ == "__main__":
         print("LLM 오류:", d["llm_error"])
     print("🟢 기회:", d["opportunity"])
     print("🔴 리스크:", d["risk"])
-    print("⚖️ 기회요인 견해차:", d["gap_opportunity"])
-    print("⚖️ 리스크요인 견해차:", d["gap_risk"])
-    print("📅 카탈리스트:", d["catalysts"])
+    print("⚖️ 당사 vs 타사 견해차:", d["gap"])
