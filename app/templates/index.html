@@ -358,7 +358,7 @@ async function refreshAll(){
 }
 document.getElementById("reqCopy").addEventListener("click", copyRequest);
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
-setInterval(refreshAll, 600000);   // 10분마다 자동 새로고침 (열어둔 채 07:30 갱신 자동 반영)
+setInterval(refreshAll, 3600000);   // 1시간마다 자동 새로고침 (열어둔 채 07:30 갱신 자동 반영)
 refreshAll();
 </script>
 </body>
