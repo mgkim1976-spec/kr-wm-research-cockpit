@@ -47,9 +47,11 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
                  top_days: int = 5) -> dict:
     """추이 차트: 최근 years년 / 거래대금 상위종목: 최근 top_days영업일(수수료 직결=단기 거래활발).
     핵심: indiv_cum(개인 누적 순매수, 조원) — 우상향=현금→주식 매집 / 우하향=주식→현금 현금화."""
-    if not _load_creds():
-        return {"error": "KRX_ID/KRX_PW 미설정 (.env 확인)"}
-    from pykrx import stock
+    _load_creds()   # 로그인형 pykrx면 자격 사용 / 표준 pip pykrx는 익명(자격 불필요)
+    try:
+        from pykrx import stock
+    except Exception as e:   # noqa: BLE001
+        return {"error": f"pykrx 임포트 실패: {e}"}
 
     end_d = dt.datetime.now()
     start_d = end_d - dt.timedelta(days=int(365 * years) + 30)

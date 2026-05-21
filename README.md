@@ -52,6 +52,14 @@ python3 app/app.py            # → http://localhost:8768
 
 ---
 
+## 플랫폼 (Windows / macOS / Linux)
+
+코어(Flask·pykrx·requests)는 크로스플랫폼입니다.
+- **데이터 수집(3단계)을 한 번에**: `python daily_update.py` (OS 공통). `daily_update.sh`는 macOS/Linux 전용.
+- **KRX 자격**: pip 표준 `pykrx`는 **로그인 불필요**(익명) — `KRX_ID/KRX_PW` 없이도 동작합니다. (`.env`엔 `OPENAI_API_KEY`만 채워도 됨)
+- **Windows venv**: `py -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`
+- **스케줄링**: Windows=작업 스케줄러(매일 `python daily_update.py` + 부팅 시 `python app\app.py`) / macOS=launchd(`deploy/`) / Linux=cron.
+
 ## 매일 자동화 (선택, macOS launchd)
 
 `daily_update.sh`(크롤+수급+도시에) 를 매일 아침 실행하고 서버를 상시 가동:

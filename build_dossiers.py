@@ -4,6 +4,11 @@ daily_update.sh 가 KRX 갱신 후 호출. (LLM 호출은 일 1회 배치만)"""
 import sys
 from pathlib import Path
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8")   # 윈도우 콘솔 한글/이모지
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "app" / "core" / "engine"))
 import scenario_engine as se  # noqa: E402
