@@ -71,20 +71,28 @@ def _llm_summarize(name: str, ticker: str, house: list, others: list) -> dict:
     prompt = (
         f"종목: {name}({ticker})\n\n[당사(미래에셋증권) 리포트 — 목표가/의견/본문]\n{h}\n\n"
         f"[타사 리포트 — 목표가/의견/본문]\n{o}\n\n"
-        "위 리포트의 **본문 내용**(제목이 아니라 목표가·투자의견·요약)을 근거로 개인투자자 자산관리 상담용 요약을 작성하라. "
-        "각 항목 1~2문장, 간결하게. 본문에 없는 사실을 지어내지 말 것. "
+        "위 리포트의 **본문 내용**(목표가·투자의견·요약)을 근거로 개인투자자 상담용 요약을 작성하라.\n"
+        "■ 절대 규칙(구체성):\n"
+        "  - 모호어 금지: '외부 요인', '대외 불확실성', '시장 변동성', '신중한 접근', '낙관 vs 신중', '경쟁 심화' 같은 표현을 "
+        "그 자체로 쓰지 말 것. 반드시 **무엇인지 구체적으로** 적시(예: 미국 관세율 인상, 원/달러 환율, 메모리 공급병목, "
+        "NAND 가격, MS사업부 적자, 중동 종전, 천궁-II 납품, 특정 사업부/제품/수치).\n"
+        "  - 견해차는 **증권사명 + 구체 근거(목표가 숫자·강조 포인트)**로. 단순 '낙관/신중 갈림'은 금지.\n"
+        "  - 본문에 구체 근거가 없는 항목은 지어내지 말고 \"특이 견해차 없음\"(gap) / \"예정된 일정 없음\"(catalysts)로 짧게.\n"
+        "  - 각 항목 1~2문장, 본문에 없는 사실 창작 금지.\n"
         'JSON으로만: {'
-        '"opportunity":"기회(성과) 요인 종합",'
-        '"risk":"리스크 요인 종합",'
-        '"gap_opportunity":"기회/성과 요인에 대해 증권사 간 견해가 갈리는 지점 — 누가 무엇을 더/덜 강조하는지, 목표가 차이 포함",'
-        '"gap_risk":"리스크 요인에 대해 증권사 간 견해가 갈리는 지점 — 신중 vs 낙관이 갈리는 곳",'
-        '"catalysts":"향후 카탈리스트·이벤트(실적발표·신규수주·제품출시·정책 등), 가능하면 시점. 본문에 없으면 \'명시적 카탈리스트 언급 없음\'"}'
-        " (당사 리포트 없으면 gap_* 는 \'당사 커버리지 없음 — 타사 견해만\'으로)"
+        '"opportunity":"기회 요인(구체 수치·사건)",'
+        '"risk":"리스크 요인(무엇이 위험인지 구체적으로)",'
+        '"gap_opportunity":"기회 견해차 — 증권사명+목표가/강조점 구체. 없으면 \'특이 견해차 없음\'",'
+        '"gap_risk":"리스크 견해차 — 증권사명+구체 근거. 없으면 \'특이 견해차 없음\'",'
+        '"catalysts":"향후 이벤트(날짜·이벤트명 구체). 없으면 \'예정된 일정 없음\'"}'
+        " (당사 리포트 없으면 gap_* 는 \'당사 커버리지 없음 — 타사 견해만\')"
     )
     try:
         resp = client.chat.completions.create(
-            model=MODEL, temperature=0.3, response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": "너는 한국 주식 리서치를 요약하는 신중한 애널리스트다. 과장·창작 금지. 제목이 아니라 제공된 본문 내용·목표가·투자의견을 근거로만 작성."},
+            model=MODEL, temperature=0.2, response_format={"type": "json_object"},
+            messages=[{"role": "system", "content": "너는 한국 주식 리서치를 요약하는 신중한 애널리스트다. 과장·창작 금지. "
+                       "제공된 본문 내용·목표가·투자의견만 근거로 하고, **항상 구체적**으로 쓴다. "
+                       "모호한 채움말('외부 요인','불확실성','신중한 접근','낙관 vs 신중')은 금지 — 근거가 없으면 '특이 견해차 없음'으로 비운다."},
                       {"role": "user", "content": prompt}])
         return json.loads(resp.choices[0].message.content)
     except Exception as e:
@@ -98,7 +106,11 @@ def build(ticker: str, name: str = "", force: bool = False) -> dict:
     if not force and ticker in cache and cache[ticker].get("date") == today:
         return cache[ticker]
     g = kr_research.gather(ticker, name)
-    summ = _llm_summarize(g["name"], ticker, g["house"], g["others"])
+    if not g["house"] and not g["others"]:   # 리서치 0건 → LLM 호출/창작 금지
+        summ = {"opportunity": "리서치 자료 없음", "risk": "", "gap_opportunity": "리서치 자료 없음",
+                "gap_risk": "", "catalysts": ""}
+    else:
+        summ = _llm_summarize(g["name"], ticker, g["house"], g["others"])
     rec = {"ticker": ticker, "name": g["name"], "date": today,
            "has_house": g["has_house"], "n_others": g["n_others"],
            "house": g["house"], "others": g["others"],
