@@ -1,0 +1,62 @@
+"""
+KR WM Research Cockpit — 시황 → 필요 컨텐츠 → 고객 관리 우선순위 대시보드 (Flask)
+
+① 시황(KRX 수급·주도주체) → ② 필요 컨텐츠(당사+타사 리서치·LLM Talking Points·요청)
+→ ③ 고객 관리 우선순위(세그먼트) → 💬 상담 메시지
+
+실행:  python3 app/app.py    →  http://localhost:8768
+방법론: docs/MARKET_SCENARIO_ADVISORY_MANUAL.md (13 시장 시나리오)
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request
+
+APP_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP_DIR / "core" / "engine"))
+sys.path.insert(0, str(APP_DIR / "core" / "adapters"))
+import scenario_engine as se   # noqa: E402
+import krx_market              # noqa: E402
+
+app = Flask(__name__, template_folder=str(APP_DIR / "templates"))
+PORT = 8768
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/state")
+def api_state():
+    """오늘의 시황 자동감지(상담 메시지용) + 기준일·리서치 수."""
+    return jsonify(se.get_state())
+
+
+@app.route("/api/krx")
+def api_krx():
+    """① KRX 시장 수급 (캐시). daily_update.sh 가 갱신, 대시보드는 캐시만 읽음."""
+    return jsonify(krx_market.load_cached())
+
+
+@app.route("/api/flow_link")
+def api_flow_link():
+    """② 수급↔리서치: 주도주체 순매수상위+외인/기관 매집 → 당사/타사 리서치·도시에 + 커버리지 GAP."""
+    days = request.args.get("days", default=45, type=int)
+    win = request.args.get("win", default="5", type=str)
+    return jsonify(se.flow_research_link(days=days, win=win))
+
+
+@app.route("/api/brief")
+def api_brief():
+    """③ 고객 관리 우선순위: 시황 기반 고객 세그먼트 우선순위 + 쏠림 경보."""
+    days = request.args.get("days", default=45, type=int)
+    return jsonify(se.contact_priority(days=days))
+
+
+if __name__ == "__main__":
+    print(f"\n  KR WM Research Cockpit\n  http://localhost:{PORT}\n")
+    se.get_state()   # 캐시 워밍업
+    app.run(host="127.0.0.1", port=PORT, debug=False)

@@ -1,0 +1,25 @@
+# secrets
+.env
+
+# generated data (크롤/배치로 생성 — 커밋하지 않음)
+data/research_db.json
+data/krx_market.json
+data/dossiers.json
+
+# downloaded PDFs (대용량·저작권 — 대시보드는 링크만 사용)
+research_reports/
+
+# logs / launchd output
+logs/
+deploy/*.out
+deploy/*.err
+*.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# os
+.DS_Store

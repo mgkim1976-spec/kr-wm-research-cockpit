@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 매일 07:30 미래에셋 리서치 크롤 배치. 설치: 아래 README 참고. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pbcopilot.dailyupdate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/daily_update.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>7</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/logs/launchd.dailyupdate.out</string>
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/logs/launchd.dailyupdate.err</string>
+</dict>
+</plist>

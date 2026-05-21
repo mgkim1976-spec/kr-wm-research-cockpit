@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 대시보드 서버 상시 가동 (http://localhost:8768). 죽으면 자동 재시작. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pbcopilot.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/app/app.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit</string>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/logs/launchd.server.out</string>
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/kr-wm-research-cockpit/logs/launchd.server.err</string>
+</dict>
+</plist>
