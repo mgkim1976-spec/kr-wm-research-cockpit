@@ -246,7 +246,8 @@ function dossierHtml(f){
   const d=f.dossier; if(!d) return "";
   const row=(emo,label,txt,cls)=> txt?`<div class="text-xs leading-snug ${cls||'text-[#1d1d1f]'}"><b>${emo} ${label}</b> ${txt}</div>`:"";
   const body=[row("🟢","기회",d.opportunity,"text-[#1d1d1f]"),row("🔴","리스크",d.risk,"text-[#1d1d1f]"),
-    row("⚖️","당사 vs 타사 견해차",d.gap,"text-blue-700")].join("");
+    row("⚖️","당사 vs 타사 견해차",d.gap,"text-blue-700"),
+    row("📅","향후 이벤트",d.catalysts,"text-violet-700")].join("");
   const srcs=(f.others_src||[]).filter(s=>s.url);
   const srcHtml = srcs.length
     ? `<div class="text-[10px] text-[#86868b] mt-1.5">📎 참고 타사: ${srcs.map(s=>`<a href="${s.url}" target="_blank" title="${(s.title||'').replace(/"/g,'')} (${s.date})" class="hover:underline">${s.broker}</a>`).join(" · ")}</div>`

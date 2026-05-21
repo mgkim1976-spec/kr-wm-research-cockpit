@@ -323,7 +323,7 @@ def flow_research_link(days: int = 45, win: str = "5") -> dict:
             hsrc = [_src(r) for r in (d.get("house") or [])]
             osrc = [_src(r) for r in (d.get("others") or [])]
             n_others = d.get("n_others", len(osrc))
-            dos = {k: d.get(k, "") for k in ("opportunity", "risk", "gap")}
+            dos = {k: d.get(k, "") for k in ("opportunity", "risk", "gap", "catalysts")}
         else:   # 폴백: research_db(미래에셋 사이트)
             reps = _reports_for(en, f["ticker"], f["name"], anchor, days)
             hsrc = [{"broker": "미래에셋증권", "title": r["title"], "date": r["date"],

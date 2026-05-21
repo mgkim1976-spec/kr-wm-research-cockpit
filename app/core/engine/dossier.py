@@ -78,12 +78,15 @@ def _llm_summarize(name: str, ticker: str, house: list, others: list) -> dict:
         "NAND 가격, MS사업부 적자, 중동 종전, 천궁-II 납품, 특정 사업부/제품/수치).\n"
         "  - 견해차는 **증권사명 + 구체 근거(목표가 숫자·강조 포인트)**로. 단순 '낙관/신중 갈림'은 금지.\n"
         "  - 본문에 구체 근거가 없으면 지어내지 말고 gap은 \"대체로 의견 일치\"로 짧게.\n"
+        "  - 카탈리스트: 본문에 **구체적 향후 이벤트**(실적발표·신규수주·신제품·계약·정책·학회 등, 가능하면 시점)가 "
+        "있을 때만 적되, **없으면 반드시 빈 문자열(\"\")**. '예정된 일정 없음' 같은 문구나 억지 생성 금지.\n"
         "  - 각 항목 1~2문장, 본문에 없는 사실 창작 금지.\n"
         'JSON으로만: {'
         '"opportunity":"기회 요인(구체 수치·사건)",'
         '"risk":"리스크 요인(무엇이 위험인지 구체적으로)",'
         '"gap":"당사(미래에셋) vs 타사 의견 차이 — 증권사명+목표가 숫자+강조점으로 구체적으로. '
-        '당사 리포트 없으면 \'당사 커버리지 없음 — 타사 목표가 범위 X~Y\'. 차이가 없으면 \'대체로 의견 일치\'"}'
+        '당사 리포트 없으면 \'당사 커버리지 없음 — 타사 목표가 범위 X~Y\'. 차이가 없으면 \'대체로 의견 일치\'",'
+        '"catalysts":"본문에 구체적 향후 이벤트가 있으면 시점과 함께. 없으면 빈 문자열"}'
     )
     try:
         resp = client.chat.completions.create(
@@ -105,14 +108,15 @@ def build(ticker: str, name: str = "", force: bool = False) -> dict:
         return cache[ticker]
     g = kr_research.gather(ticker, name)
     if not g["house"] and not g["others"]:   # 리서치 0건 → LLM 호출/창작 금지
-        summ = {"opportunity": "리서치 자료 없음", "risk": "", "gap": "리서치 자료 없음"}
+        summ = {"opportunity": "리서치 자료 없음", "risk": "", "gap": "리서치 자료 없음", "catalysts": ""}
     else:
         summ = _llm_summarize(g["name"], ticker, g["house"], g["others"])
     rec = {"ticker": ticker, "name": g["name"], "date": today,
            "has_house": g["has_house"], "n_others": g["n_others"],
            "house": g["house"], "others": g["others"],
            "opportunity": summ.get("opportunity", ""), "risk": summ.get("risk", ""),
-           "gap": summ.get("gap", ""), "llm_error": summ.get("error", "")}
+           "gap": summ.get("gap", ""), "catalysts": summ.get("catalysts", ""),
+           "llm_error": summ.get("error", "")}
     cache[ticker] = rec
     _save_cache(cache)
     return rec
@@ -129,3 +133,4 @@ if __name__ == "__main__":
     print("🟢 기회:", d["opportunity"])
     print("🔴 리스크:", d["risk"])
     print("⚖️ 당사 vs 타사 견해차:", d["gap"])
+    print("📅 카탈리스트:", d.get("catalysts") or "(없음)")
