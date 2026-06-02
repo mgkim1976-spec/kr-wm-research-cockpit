@@ -62,20 +62,21 @@ def _classify_lead(rec: dict) -> dict:
         structure = f"{dom} 주도"
     else:
         structure = "개인+일부 스마트머니"
-    n1, n5v, n20 = rec["1"][dom], n5[dom], rec["20"][dom]
+    # 궤적 장기 기준 = 50일(분기≈실적 사이클): 사이클 동안 매집했나 + 최근(5/1일) 지속/이탈
+    n1, n5v, n20, n50 = rec["1"][dom], n5[dom], rec["20"][dom], rec["50"][dom]
     r5, r20 = n5v / 5.0, (n20 / 20.0 if n20 else 0)
-    if n20 > 0 and n5v > 0:
+    if n50 > 0 and n5v > 0:
         traj = ("매집 중 단기차익" if n1 < 0 else
                 ("지속매집(가속)" if r5 >= r20 else "매집 둔화"))
-    elif n20 > 0 and n5v <= 0:
-        ret = rec.get("ret20")
+    elif n50 > 0 and n5v <= 0:
+        ret = rec.get("ret50") if rec.get("ret50") is not None else rec.get("ret20")
         traj = "이탈·수익실현" if (ret is not None and ret > 0) else "이탈·손절"
-    elif n20 <= 0 and n5v > 0:
+    elif n50 <= 0 and n5v > 0:
         traj = "신규 진입"
     else:
         traj = "관망/혼조"
     return {"actor": dom, "net5": n5[dom], "structure": structure, "traj": traj,
-            "ret5": rec.get("ret5"), "ret20": rec.get("ret20"), "by": n5}
+            "ret5": rec.get("ret5"), "ret20": rec.get("ret20"), "ret50": rec.get("ret50"), "by": n5}
 
 
 def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict) -> dict:
@@ -88,9 +89,9 @@ def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict)
                     active.add(x["ticker"])
     out = {}
     for tk in active:
-        rec = {"name": name_by_tk.get(tk, ""),
-               "ret5": ret_by_w.get("5", {}).get(tk), "ret20": ret_by_w.get("20", {}).get(tk)}
-        for w in ("1", "5", "20"):
+        rec = {"name": name_by_tk.get(tk, ""), "ret5": ret_by_w.get("5", {}).get(tk),
+               "ret20": ret_by_w.get("20", {}).get(tk), "ret50": ret_by_w.get("50", {}).get(tk)}
+        for w in ("1", "5", "20", "50"):
             rec[w] = {a: flows_full.get((w, a), {}).get(tk, 0) for a in _INV3}
         rec["lead"] = _classify_lead(rec)
         out[tk] = rec
@@ -112,7 +113,7 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
     start, end = start_d.strftime("%Y%m%d"), end_d.strftime("%Y%m%d")
 
     out: dict = {"market": market, "updated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                 "years": years, "windows": [1, 5, 20], "sankey_days": 5,
+                 "years": years, "windows": [1, 5, 20, 50], "sankey_days": 5,
                  "dates": [], "indiv_net": [], "indiv_cum": [], "foreign_net": [], "inst_net": [],
                  "total_value": [], "indiv_value": [], "indiv_share": [], "foreign_share": [],
                  "inst_share": [], "tops": {}}

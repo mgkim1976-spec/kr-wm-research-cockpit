@@ -154,7 +154,7 @@ function pill(active){
 }
 function buildToggle(){
   const wrap=document.getElementById("winToggle"); if(!wrap) return; wrap.innerHTML="";
-  const labels={"1":"1일(오늘)","5":"5일(주간)","20":"20일(월간)"};
+  const labels={"1":"1일(오늘)","5":"5일(주간)","20":"20일(월간)","50":"50일(분기)"};
   (KRXDATA.windows||[1,5,20]).forEach(w=>{ const k=String(w); const b=document.createElement("button");
     b.className=`chip text-xs px-3 py-1 rounded-full ${pill(k===TOPWIN)}`;
     b.textContent=labels[k]||k+"일"; b.onclick=()=>{ TOPWIN=k; buildToggle(); renderTops(); }; wrap.appendChild(b); });
