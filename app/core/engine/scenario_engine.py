@@ -309,6 +309,7 @@ def flow_research_link(days: int = 45, win: str = "5") -> dict:
     act = active_actor(krx, win)
     dom = act["actor"]
     tops = krx.get("tops", {}).get(win, {})
+    sflows = krx.get("stock_flows", {})
 
     focus = []
     for x in tops.get(dom, {}).get("top_buy", [])[:8]:
@@ -350,7 +351,8 @@ def flow_research_link(days: int = 45, win: str = "5") -> dict:
         house_latest = hsrc[0]["date"] if hsrc else None
         stale = bool(has_house and house_latest and _days_between(house_latest, anchor) > STALE_DAYS)
         items.append({**f, "has_house": has_house, "house_latest": house_latest, "house_stale": stale,
-                      "house_src": hsrc, "others_src": osrc, "n_others": n_others, "dossier": dos})
+                      "house_src": hsrc, "others_src": osrc, "n_others": n_others, "dossier": dos,
+                      "stock_lead": (sflows.get(f["ticker"], {}) or {}).get("lead")})
         # 요청 대상: 당사 전무(신규) 또는 오래됨(업데이트)
         if not has_house:
             gaps.append({"ticker": f["ticker"], "name": f["name"], "reason": f["reason"],

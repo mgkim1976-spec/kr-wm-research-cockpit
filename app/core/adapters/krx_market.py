@@ -43,6 +43,60 @@ def _load_creds() -> bool:
     return bool(os.environ.get("KRX_ID") and os.environ.get("KRX_PW"))
 
 
+_INV3 = ["개인", "외국인", "기관"]
+
+
+def _classify_lead(rec: dict) -> dict:
+    """종목 주도주체(5일 최대순매수) + 수급구조(동반/단독) + 궤적(지속매집/둔화/이탈)."""
+    n5 = rec["5"]
+    dom = max(_INV3, key=lambda a: n5[a])
+    if n5[dom] <= 0:
+        return {"actor": None, "structure": "매수주체 없음", "traj": "—",
+                "ret5": rec.get("ret5"), "by": n5}
+    smart = [a for a in ("외국인", "기관") if n5[a] > 0]
+    if dom == "개인" and not smart:
+        structure = "개인 단독(트랩)"
+    elif len(smart) >= 2:
+        structure = "외인·기관 동반"
+    elif dom in ("외국인", "기관"):
+        structure = f"{dom} 주도"
+    else:
+        structure = "개인+일부 스마트머니"
+    n1, n5v, n20 = rec["1"][dom], n5[dom], rec["20"][dom]
+    r5, r20 = n5v / 5.0, (n20 / 20.0 if n20 else 0)
+    if n20 > 0 and n5v > 0:
+        traj = ("매집 중 단기차익" if n1 < 0 else
+                ("지속매집(가속)" if r5 >= r20 else "매집 둔화"))
+    elif n20 > 0 and n5v <= 0:
+        ret = rec.get("ret20")
+        traj = "이탈·수익실현" if (ret is not None and ret > 0) else "이탈·손절"
+    elif n20 <= 0 and n5v > 0:
+        traj = "신규 진입"
+    else:
+        traj = "관망/혼조"
+    return {"actor": dom, "net5": n5[dom], "structure": structure, "traj": traj,
+            "ret5": rec.get("ret5"), "ret20": rec.get("ret20"), "by": n5}
+
+
+def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict) -> dict:
+    """상위 리스트에 등장한 종목(active)별 3주체 순매수(1/5/20일)+등락률+주도판정."""
+    active = set()
+    for invs in tops.values():
+        for t in invs.values():
+            for key in ("top_value", "top_buy", "top_sell"):
+                for x in t.get(key, []):
+                    active.add(x["ticker"])
+    out = {}
+    for tk in active:
+        rec = {"name": name_by_tk.get(tk, ""),
+               "ret5": ret_by_w.get("5", {}).get(tk), "ret20": ret_by_w.get("20", {}).get(tk)}
+        for w in ("1", "5", "20"):
+            rec[w] = {a: flows_full.get((w, a), {}).get(tk, 0) for a in _INV3}
+        rec["lead"] = _classify_lead(rec)
+        out[tk] = rec
+    return out
+
+
 def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
                  top_days: int = 5) -> dict:
     """추이 차트: 최근 years년 / 거래대금 상위종목: 최근 top_days영업일(수수료 직결=단기 거래활발).
@@ -103,18 +157,32 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
         out["gross_error"] = str(e)[:120]
 
     # 4) 주체별(개인/외국인/기관) × 윈도우별(1/5/20영업일) 거래대금/순매수/순매도 상위
+    #    + 종목별 3주체 순매수 전체(stock_flows) + 윈도우 등락률 → 종목 주도주체·매집/이탈 궤적용
     investors = [("개인", "개인"), ("외국인", "외국인"), ("기관", "기관합계")]
     end_b = bdays[-1].strftime("%Y%m%d") if bdays else end
+    flows_full: dict = {}    # (str(w), disp) -> {ticker: 순매수(억)}
+    ret_by_w: dict = {}      # str(w) -> {ticker: 등락률(%)}
+    name_by_tk: dict = {}
     for w in out["windows"]:
         if not bdays:
             break
         w_start = (bdays[-w] if len(bdays) >= w else bdays[0]).strftime("%Y%m%d")
         out["tops"][str(w)] = {}
+        try:
+            time.sleep(THROTTLE_SEC)
+            pc = stock.get_market_price_change(w_start, end_b, market)
+            ret_by_w[str(w)] = {tk: float(pc.loc[tk]["등락률"]) for tk in pc.index}
+        except Exception as e:
+            out.setdefault("top_error", {})[f"{w}_pc"] = str(e)[:120]
         for disp, inv in investors:
             try:
                 time.sleep(THROTTLE_SEC)
                 npe = stock.get_market_net_purchases_of_equities(w_start, end_b, market, inv)
                 npe = npe.assign(_gross=npe["매수거래대금"] + npe["매도거래대금"])
+                flows_full[(str(w), disp)] = {tk: round(float(npe.loc[tk]["순매수거래대금"]) / 1e8)
+                                              for tk in npe.index}
+                for tk in npe.index:
+                    name_by_tk.setdefault(tk, npe.loc[tk].get("종목명", ""))
 
                 def _val(tk, _n=npe):
                     r = _n.loc[tk]
@@ -134,6 +202,9 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
                 }
             except Exception as e:
                 out.setdefault("top_error", {})[f"{w}_{disp}"] = str(e)[:120]
+
+    # 4.5) 종목별 주도주체 + 매집/이탈 궤적 (active 종목: 상위 리스트에 등장한 종목 합집합)
+    out["stock_flows"] = _stock_flows(out["tops"], flows_full, ret_by_w, name_by_tk)
 
     # 4.5) KOSPI 지수 종가 → 일별수익률 (방향주도 판정용). dates 와 정렬.
     try:

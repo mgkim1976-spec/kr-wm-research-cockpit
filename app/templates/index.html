@@ -320,6 +320,21 @@ function dossierHtml(f){
     : "";
   return (body||srcHtml)?`<div class="mt-2 pt-2 border-t border-[#e8e8ed] space-y-1">${body}${srcHtml}</div>`:"";
 }
+function leadHtml(f){
+  const L=f.stock_lead;
+  if(!L) return "";
+  if(!L.actor) return `<div class="text-[10px] text-[#86868b] mb-1">수급 주도: 매수주체 없음(분산매도)</div>`;
+  const trap=(L.structure||"").indexOf("트랩")>=0, exitL=(L.traj||"").indexOf("이탈")>=0, accel=(L.traj||"").indexOf("지속")>=0;
+  const sCls=trap?"bg-rose-100 text-rose-700":(L.actor==="개인"?"bg-amber-100 text-amber-700":"bg-emerald-100 text-emerald-700");
+  const tCls=accel?"text-emerald-600 font-semibold":(exitL?((L.traj.indexOf("손절")>=0)?"text-rose-600 font-semibold":"text-amber-600 font-semibold"):"text-[#6e6e73]");
+  const by=L.by||{}, fb=v=>(v>=0?"+":"")+(v??0), ret=L.ret5;
+  const emo=accel?"📈":(exitL?"📤":(L.traj.indexOf("신규")>=0?"🆕":"•"));
+  return `<div class="flex items-center gap-1.5 mb-1 flex-wrap text-[10px]">
+     <span class="${sCls} px-2 py-0.5 rounded-full font-medium">수급 주도 ${L.actor} · ${L.structure}</span>
+     <span class="${tCls}">${emo} ${L.traj}</span>
+     <span class="text-[#86868b]">5일 개인 ${fb(by["개인"])}·외인 ${fb(by["외국인"])}·기관 ${fb(by["기관"])}억${ret!=null?` · 종목 ${ret>=0?"+":""}${ret}%`:""}</span>
+   </div>`;
+}
 function renderFlowLink(){
   return fetch("/api/flow_link?days=45").then(r=>r.json()).then(d=>{
     const ff=document.getElementById("flowFocus");
@@ -349,7 +364,7 @@ function renderFlowLink(){
           <span class="${tagcls} text-[10px] px-2 py-0.5 rounded-full font-medium">${f.tag}</span>
           <span class="text-sm text-[#1d1d1f] font-semibold">${f.name}</span>
           <span class="text-[10px] text-[#86868b]">${f.ticker}</span>${others}</div>
-        <div class="text-xs text-[#6e6e73] mb-1">${f.reason}</div>${reps}${dossierHtml(f)}`;
+        <div class="text-xs text-[#6e6e73] mb-1">${f.reason}</div>${leadHtml(f)}${reps}${dossierHtml(f)}`;
       ff.appendChild(card);
     });
     FLOWGAPS=d;
