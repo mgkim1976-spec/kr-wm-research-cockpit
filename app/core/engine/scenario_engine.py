@@ -282,15 +282,32 @@ def compute_havens(krx: dict, win: str = "5") -> list[dict]:
     return havens
 
 
+def active_actor(krx: dict, win: str = "5") -> dict:
+    """시장을 '끄는' 주체 = 방향주도(leader by_corr: 순매수 방향과 지수 방향 일치).
+    세 주체 순매수 합은 ~0(사는 쪽↔받아주는 쪽) → 최대순매수(dominant)는 받아주는 쪽일 수 있어
+    종목 선별 기준으로 부적합. leader 없으면(지수 미수집 등) dominant 폴백."""
+    rg = krx.get("regime", {})
+    lw = "20" if str(win) == "20" else "5"
+    ld = (rg.get("leader") or {}).get(lw) or {}
+    actor = ld.get("by_corr")
+    if actor:
+        return {"actor": actor, "basis": "leader", "window": lw,
+                "corr": (ld.get("corr") or {}).get(actor), "index_ret_pct": ld.get("index_ret_pct"),
+                "absorber": ld.get("absorber_corr"), "dominant": rg.get("dominant")}
+    return {"actor": rg.get("dominant", "개인"), "basis": "dominant_fallback", "window": lw,
+            "corr": None, "index_ret_pct": None, "absorber": None, "dominant": rg.get("dominant")}
+
+
 def flow_research_link(days: int = 45, win: str = "5") -> dict:
-    """주도주체 순매수 상위 + 외인·기관 매집 종목 → 리서치 매칭 + 커버리지 GAP(요청 대상) 도출."""
+    """방향주도 주체 순매수 상위 + 외인·기관 매집 종목 → 리서치 매칭 + 커버리지 GAP(요청 대상) 도출."""
     _ensure_loaded()
     en = _CACHE["enriched"]
     anchor = anchor_date(en)
     krx = load_krx()
     if not krx or "regime" not in krx:
         return {"error": "KRX 캐시 없음 — daily_update.sh 실행 필요"}
-    dom = krx["regime"]["dominant"]
+    act = active_actor(krx, win)
+    dom = act["actor"]
     tops = krx.get("tops", {}).get(win, {})
 
     focus = []
@@ -341,8 +358,8 @@ def flow_research_link(days: int = 45, win: str = "5") -> dict:
         elif stale:
             gaps.append({"ticker": f["ticker"], "name": f["name"], "reason": f["reason"],
                          "tag": f["tag"], "last_report": house_latest, "kind": "업데이트"})
-    return {"regime": dom, "window": win, "days": days, "anchor": anchor, "stale_days": STALE_DAYS,
-            "focus": items, "havens": havens, "gaps": gaps}
+    return {"regime": dom, "regime_meta": act, "window": win, "days": days, "anchor": anchor,
+            "stale_days": STALE_DAYS, "focus": items, "havens": havens, "gaps": gaps}
 
 
 def contact_priority(days: int = 45, win: str = "5") -> dict:
@@ -355,7 +372,8 @@ def contact_priority(days: int = 45, win: str = "5") -> dict:
     if not krx or "regime" not in krx:
         return {"error": "KRX 캐시 없음 — daily_update.sh 실행 필요"}
     regime = krx["regime"]
-    dom = regime["dominant"]
+    act = active_actor(krx, win)
+    dom = act["actor"]
     tops = krx.get("tops", {}).get(win, {})
     REGIME_RISK = {"개인": "고변동(리스크)", "외국인": "보통(인덱스)", "기관": "보통(가치)"}
 
@@ -398,7 +416,8 @@ def contact_priority(days: int = 45, win: str = "5") -> dict:
         s["rank"] = i + 1
         s["content"] = content_for(s.get("items", []))
         s.pop("items", None)
-    return {"regime": regime, "regime_risk": REGIME_RISK.get(dom, ""), "anchor": anchor,
+    return {"regime": {**regime, "active": dom, "active_meta": act},
+            "regime_risk": REGIME_RISK.get(dom, ""), "anchor": anchor,
             "watch": watch, "segments": segs}
 
 

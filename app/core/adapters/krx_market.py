@@ -135,7 +135,23 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
             except Exception as e:
                 out.setdefault("top_error", {})[f"{w}_{disp}"] = str(e)[:120]
 
-    # 5) 시장 주도 주체(regime) — 최근 5영업일 순매수 합(조) + 거래비중 평균(%)
+    # 4.5) KOSPI 지수 종가 → 일별수익률 (방향주도 판정용). dates 와 정렬.
+    try:
+        time.sleep(THROTTLE_SEC)
+        idx = stock.get_index_ohlcv(start, end, "1001")   # 1001=KOSPI
+        close_by_date = {d.strftime("%Y-%m-%d"): float(c) for d, c in zip(idx.index, idx["종가"])}
+        closes = [close_by_date.get(ds) for ds in out["dates"]]
+        out["index_close"] = [round(c, 2) if c is not None else None for c in closes]
+        out["index_ret"] = [None] + [   # 일별수익률(%), index_ret[i]=dates[i] 당일 등락
+            round((closes[i] / closes[i - 1] - 1) * 100, 3)
+            if closes[i] and closes[i - 1] else None for i in range(1, len(closes))]
+    except Exception as e:
+        out["index_error"] = str(e)[:120]
+        out["index_close"], out["index_ret"] = [], []
+
+    # 5) 시장 주도 주체(regime)
+    #    ① dominant: 5일 최대 순매수 주체(자금 규모)  ② leader: 순매수 방향과 지수 방향이 일치하는 주체
+    #    세 주체 순매수 합은 ~0(사는 쪽↔받아주는 쪽 짝) → 규모가 아니라 '가격이 누구 편이었나'로 주도성 판정.
     def _sum5(key):
         a = (out.get(key) or [])[-5:]
         return round(sum(x for x in a if x is not None) / 1e4, 1) if a else 0   # 억→조
@@ -145,7 +161,106 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
     nets = {"개인": _sum5("indiv_net"), "외국인": _sum5("foreign_net"), "기관": _sum5("inst_net")}
     shares = {"개인": _avg5("indiv_share"), "외국인": _avg5("foreign_share"), "기관": _avg5("inst_share")}
     dominant = max(nets, key=lambda k: nets[k])          # 5일 최대 순매수 주체 = 자금 주도
-    out["regime"] = {"dominant": dominant, "nets_5d": nets, "shares_5d": shares}
+
+    def _corr(xs, ys):
+        """Pearson corr — None-쌍 제외, 표본<2 또는 분산0이면 None."""
+        ps = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        if len(ps) < 2:
+            return None
+        mx = sum(p[0] for p in ps) / len(ps); my = sum(p[1] for p in ps) / len(ps)
+        sxx = sum((p[0] - mx) ** 2 for p in ps); syy = sum((p[1] - my) ** 2 for p in ps)
+        if sxx <= 0 or syy <= 0:
+            return None
+        sxy = sum((p[0] - mx) * (p[1] - my) for p in ps)
+        return round(sxy / (sxx ** 0.5 * syy ** 0.5), 2)
+
+    def _conc(ns, rs):
+        """부호일치 비율 — 순매수·수익률 부호가 같은 날 비율(0 제외)."""
+        ps = [(n, r) for n, r in zip(ns, rs) if n not in (None, 0) and r not in (None, 0)]
+        if not ps:
+            return None
+        return round(sum(1 for n, r in ps if (n > 0) == (r > 0)) / len(ps), 2)
+
+    nets_daily = {"개인": out.get("indiv_net") or [], "외국인": out.get("foreign_net") or [],
+                  "기관": out.get("inst_net") or []}
+    rets_daily = out.get("index_ret") or []
+    leader: dict = {}
+    for w in (5, 20):
+        r_w = rets_daily[-w:]
+        idx_ret_w = None
+        cl = out.get("index_close") or []
+        if len(cl) > w and cl[-1] and cl[-1 - w]:
+            idx_ret_w = round((cl[-1] / cl[-1 - w] - 1) * 100, 2)   # 윈도우 지수 등락(%)
+        corr = {k: _corr(v[-w:], r_w) for k, v in nets_daily.items()}
+        conc = {k: _conc(v[-w:], r_w) for k, v in nets_daily.items()}
+        valid = {k: c for k, c in corr.items() if c is not None}
+        by_corr = max(valid, key=lambda k: valid[k]) if valid else None
+        absorber = min(valid, key=lambda k: valid[k]) if valid else None
+        vc = {k: c for k, c in conc.items() if c is not None}
+        by_conc = max(vc, key=lambda k: vc[k]) if vc else None
+        leader[str(w)] = {"by_corr": by_corr, "absorber_corr": absorber, "by_conc": by_conc,
+                          "corr": corr, "conc": conc, "index_ret_pct": idx_ret_w}
+    out["regime"] = {"dominant": dominant, "nets_5d": nets, "shares_5d": shares, "leader": leader}
+
+    # 6) regime 전환 게이지 — 개인 norm β(행태) + 거래대금·flow강도(규모)
+    #    예금→주식 이동이 ① 규모(거래대금·flow강도↑)로 오는지 ② 행태(개인 역추세 약화=β→0)로 오는지 분리.
+    #    norm = 순매수(억)/거래대금(억) → 규모중립(거래량 증가 착시 제거). 8년 검증: analyze_norm_beta.py
+    def _beta(xs, ys):
+        ps = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        if len(ps) < 10:
+            return None
+        n = len(ps); mx = sum(p[0] for p in ps) / n; my = sum(p[1] for p in ps) / n
+        sxx = sum((p[0] - mx) ** 2 for p in ps)
+        return round(sum((p[0] - mx) * (p[1] - my) for p in ps) / sxx, 2) if sxx > 0 else None
+    rets = [(r / 100) if r is not None else None for r in (out.get("index_ret") or [])]  # %→소수(β 기준선과 일치)
+    tv = out.get("total_value") or []   # 조원(매수기준 거래대금)
+    def _norm(netkey):
+        arr = out.get(netkey) or []
+        return [(arr[i] / (tv[i] * 1e4)) if (i < len(tv) and tv[i] and arr[i] is not None) else None
+                for i in range(len(arr))]
+    ni, nf = _norm("indiv_net"), _norm("foreign_net")
+    def _fi(series, w):   # flow강도(%) = 평균 |순매수|/거래대금
+        s = [abs(x) for x in series[-w:] if x is not None]
+        return round(sum(s) / len(s) * 100, 1) if s else None
+    def _tavg(w):
+        s = [x for x in tv[-w:] if x]
+        return round(sum(s) / len(s), 1) if s else None
+    W = 120   # 최근 ~6개월 윈도우
+    # 롤링 개인 norm β 추세(2년 캐시 내 120일 윈도우, 20일 간격 샘플) — 즉시 시각화용
+    btrend = []
+    for j in range(W, len(ni), 20):
+        b = _beta(ni[j - W:j], rets[j - W:j])
+        if b is not None and j - 1 < len(out["dates"]):
+            btrend.append({"date": out["dates"][j - 1], "beta": b})
+    out["regime"]["gauge"] = {
+        "win": W,
+        "beta_indiv": _beta(ni[-W:], rets[-W:]),      # 개인 행태(음수 강할수록 역추세 흡수 강함, 0 접근=전환조짐)
+        "beta_foreign": _beta(nf[-W:], rets[-W:]),
+        "fi_indiv": _fi(ni, W), "fi_foreign": _fi(nf, W),
+        "turnover_recent": _tavg(20), "turnover_base": _tavg(len(tv)),
+        "beta_trend": btrend,
+        # 8년(analyze_norm_beta) 기준선 — 참고 baseline
+        "ref": {"beta_indiv": "-0.13~-0.29", "fi_indiv_2018": 2.9, "fi_indiv_2026": 5.9,
+                "turnover_2025": 12.4, "turnover_2026": 33.8},
+    }
+
+    # regime 스냅샷 시계열 적재(전환 감지 장기 추적) — 같은 날 중복 방지, append-only
+    try:
+        g = out["regime"]["gauge"]; anchor = out["dates"][-1] if out["dates"] else None
+        if anchor:
+            hp = ROOT / "data" / "regime_history.jsonl"
+            last = None
+            if hp.exists():
+                ls = hp.read_text(encoding="utf-8").strip().splitlines()
+                last = json.loads(ls[-1]).get("date") if ls else None
+            if last != anchor:
+                snap = {"date": anchor, "leader5": leader["5"]["by_corr"], "leader20": leader["20"]["by_corr"],
+                        "dominant": dominant, "beta_indiv": g["beta_indiv"], "beta_foreign": g["beta_foreign"],
+                        "fi_indiv": g["fi_indiv"], "turnover": g["turnover_recent"]}
+                with hp.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(snap, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
     return out
 
@@ -176,7 +291,12 @@ if __name__ == "__main__":
     else:
         rg = d.get("regime", {})
         dom = rg.get("dominant", "개인")
+        ld = rg.get("leader", {})
         t5 = d["tops"].get("5", {}).get(dom, {}).get("top_value", [])
         print(f"[OK] {d['updated']} / {len(d['dates'])}거래일 / 누적순매수 {d['indiv_cum'][-1] if d['indiv_cum'] else 'NA'}조"
-              f"\n  주도주체: {dom} / 5일순매수(조) {rg.get('nets_5d')} / 거래비중(%) {rg.get('shares_5d')}"
-              f"\n  [{dom}] 5일 거래대금상위 {[t['name'] for t in t5[:5]]}")
+              f"\n  자금주도(최대순매수): {dom} / 5일순매수(조) {rg.get('nets_5d')} / 거래비중(%) {rg.get('shares_5d')}")
+        for w in ("5", "20"):
+            x = ld.get(w, {})
+            print(f"  방향주도 {w}일: corr→{x.get('by_corr')} / 부호일치→{x.get('by_conc')} "
+                  f"/ 받아주는쪽→{x.get('absorber_corr')} (지수 {x.get('index_ret_pct')}% · corr {x.get('corr')})")
+        print(f"  [{dom}] 5일 거래대금상위 {[t['name'] for t in t5[:5]]}")

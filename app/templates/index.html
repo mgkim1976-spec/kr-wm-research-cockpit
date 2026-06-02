@@ -37,7 +37,9 @@
     <section class="card p-6 mb-6">
       <h2 class="sec mb-4">① 시황 · 시장 수급 <span id="krxUpdated" class="text-[#86868b] text-xs font-normal"></span></h2>
       <div id="krxBody">
+        <div id="cliPhase" class="rounded-2xl p-4 mb-4 border"></div>
         <div id="regimeBanner" class="rounded-2xl p-4 mb-4 border"></div>
+        <div id="regimeGauge" class="rounded-2xl p-4 mb-4 border border-[#e8e8ed] bg-[#fbfbfd]"></div>
         <!-- 헤드라인: 개인 누적 순매수 -->
         <div class="panel p-4 mb-4">
           <div class="flex items-center justify-between mb-1">
@@ -164,24 +166,87 @@ function buildInvToggle(){
     b.textContent=inv; b.onclick=()=>{ TOPINV=inv; buildInvToggle(); renderTops(); renderSankey(); }; wrap.appendChild(b); });
 }
 function renderRegime(d){
-  const rg=d.regime||{}; const dom=rg.dominant||"개인"; TOPINV=dom;
+  const rg=d.regime||{}; const lead=(rg.leader&&rg.leader["5"])||{};
+  const dom=lead.by_corr||rg.dominant||"개인"; TOPINV=dom;
+  const absorber=lead.absorber_corr, cor=lead.corr||{}, ir=lead.index_ret_pct;
   const info=REGIME_INFO[dom]||REGIME_INFO["개인"];
   const sh=rg.shares_5d||{}, nt=rg.nets_5d||{};
-  const fNet=v=>(v>=0?"+":"")+(v??0)+"조";
+  const fNet=v=>(v>=0?"+":"")+(v??0)+"조"; const fc=v=>v==null?"-":(v>=0?"+":"")+v;
   const banner=document.getElementById("regimeBanner");
   banner.className=`rounded-2xl p-4 mb-4 border ${info.tint}`;
   banner.innerHTML=`<div class="flex items-center justify-between flex-wrap gap-2">
-     <div class="text-[15px] font-semibold text-[#1d1d1f]">🚦 시장 주도: ${info.emoji} ${info.label}</div>
+     <div class="text-[15px] font-semibold text-[#1d1d1f]">🚦 방향주도(가격을 끈 주체): ${info.emoji} ${info.label}</div>
      <div class="text-xs text-[#6e6e73]">거래비중 <b class="text-[#1d1d1f]">개인 ${sh["개인"]??"-"}%</b> · 외국인 ${sh["외국인"]??"-"}% · 기관 ${sh["기관"]??"-"}% &nbsp;|&nbsp; 5일 순매수 개인 ${fNet(nt["개인"])} · 외국인 ${fNet(nt["외국인"])} · 기관 ${fNet(nt["기관"])}</div>
    </div>
+   <div class="text-xs text-[#6e6e73] mt-1.5">🧭 ${ir!=null?`5일 지수 <b class="text-[#1d1d1f]">${ir>=0?"+":""}${ir}%</b> · `:""}corr 개인 ${fc(cor["개인"])}·외인 ${fc(cor["외국인"])}·기관 ${fc(cor["기관"])}${absorber?` · 받아주는 쪽 <b class="text-rose-500">${absorber}</b>`:""} <span class="text-[#86868b]">| 최대순매수 ${rg.dominant||"-"}${rg.dominant&&rg.dominant!==dom?" (≠주도)":""}</span></div>
    <div class="text-xs text-[#6e6e73] mt-1.5">${info.market} &nbsp;·&nbsp; 💡 <span class="text-[#1d1d1f] font-semibold">${info.keyword}</span></div>`;
-  const rows=["외국인","기관","개인"].map(k=>{ const i=REGIME_INFO[k]; const cur=k===dom;
-    return `<tr class="${cur?"bg-blue-50/60":""}">
-      <td class="px-3 py-1.5 font-semibold ${cur?"text-[#1d1d1f]":"text-[#6e6e73]"} whitespace-nowrap">${i.emoji} ${k}${cur?" ◀ 현재":""}</td>
+  const rows=["외국인","기관","개인"].map(k=>{ const i=REGIME_INFO[k]; const cur=k===dom; const abs=k===absorber;
+    return `<tr class="${cur?"bg-blue-50/60":(abs?"bg-rose-50/40":"")}">
+      <td class="px-3 py-1.5 font-semibold ${cur?"text-[#1d1d1f]":"text-[#6e6e73]"} whitespace-nowrap">${i.emoji} ${k}${cur?" ◀ 주도":(abs?" ◁ 받아주는 쪽":"")}</td>
       <td class="px-3 py-1.5 text-[#1d1d1f]">${i.pick}</td>
       <td class="px-3 py-1.5 text-[#6e6e73]">${i.risk}</td>
       <td class="px-3 py-1.5 text-[#1d1d1f]">${i.keyword}</td></tr>`; }).join("");
   document.getElementById("frameMatrix").innerHTML=`<table class="matrix w-full text-xs border border-[#e8e8ed] rounded-lg"><thead><tr class="text-[#86868b] bg-[#f5f5f7]"><th class="px-3 py-1.5 text-left font-medium">주도주체</th><th class="px-3 py-1.5 text-left font-medium">주목 후보</th><th class="px-3 py-1.5 text-left font-medium">리스크 관리</th><th class="px-3 py-1.5 text-left font-medium">영업 키워드</th></tr></thead><tbody class="divide-y divide-[#e8e8ed]">${rows}</tbody></table>`;
+}
+const CLI_TINT={"확장":"bg-emerald-50 border-emerald-200","회복":"bg-sky-50 border-sky-200","둔화":"bg-amber-50 border-amber-200","수축":"bg-rose-50 border-rose-200"};
+const CLI_EMO={"확장":"📈","회복":"🌱","둔화":"📉","수축":"🥶"};
+async function renderCli(){
+  const el=document.getElementById("cliPhase"); if(!el) return;
+  let d; try{ d=await (await fetch("/api/cli")).json(); }catch(e){ el.style.display="none"; return; }
+  if(!d || d.error || !d.current){ el.style.display="none"; return; }
+  el.style.display="";
+  const c=d.current, ph=c.phase, st=(d.fwd_stats||{})[ph]||{};
+  el.className=`rounded-2xl p-4 mb-4 border ${CLI_TINT[ph]||"border-[#e8e8ed]"}`;
+  const order=["회복","확장","둔화","수축"];
+  const chips=order.map(p=>{ const s=(d.fwd_stats||{})[p]||{}; const cur=p===ph;
+    return `<span class="text-[10px] px-2 py-0.5 rounded-full ${cur?"bg-[#1d1d1f] text-white font-semibold":"bg-white text-[#6e6e73] border border-[#e8e8ed]"}">${CLI_EMO[p]} ${p} ${s.excess!=null?(s.excess>=0?"+":"")+s.excess+"%":""}</span>`; }).join(" ");
+  el.innerHTML=`<div class="flex items-center justify-between flex-wrap gap-2">
+     <div class="text-[15px] font-semibold text-[#1d1d1f]">🌐 경기국면(OECD CLI): ${CLI_EMO[ph]||""} ${ph} ${c.rising?"▲":"▼"} <span class="text-xs font-normal text-[#6e6e73]">${c.cli} · ${c.months_in_phase}개월째 · ${c.as_of} 기준(발표지연)</span></div>
+     <div class="text-xs text-[#6e6e73]">이 국면 과거 ${d.fwd_window}일 지수 <b class="text-[#1d1d1f]">${st.mean!=null?(st.mean>=0?"+":"")+st.mean+"%":"-"}</b> · 초과 ${st.excess!=null?(st.excess>=0?"+":"")+st.excess+"%":"-"} · 승률 ${st.win??"-"}%</div>
+   </div>
+   <div class="mt-2 flex flex-wrap gap-1.5 items-center">${chips}<span class="text-[10px] text-[#86868b] ml-1">← 8년 국면별 ${d.fwd_window}일 초과수익(시장중립). 방향 베팅의 1차 신호는 '주도세력'보다 국면.</span></div>`;
+}
+function renderGauge(d){
+  const g=(d.regime||{}).gauge; const el=document.getElementById("regimeGauge"); if(!el) return;
+  if(!g){ el.style.display="none"; return; } el.style.display="";
+  const ref=g.ref||{};
+  const bi=g.beta_indiv, fi=g.fi_indiv, tr=g.turnover_recent, tb=g.turnover_base;
+  // 행태 판정 (개인 norm β: 0 접근 = 역추세 약화 = 전환 조짐)
+  let beh, behCls;
+  if(bi==null){ beh="-"; behCls="text-[#86868b]"; }
+  else if(bi> -0.10){ beh="⚠️ 행태 전환 조짐 (개인 역추세 약화)"; behCls="text-rose-600 font-semibold"; }
+  else if(bi<=-0.25){ beh="역추세 흡수 강화"; behCls="text-emerald-600"; }
+  else { beh="정상 역추세(흡수자)"; behCls="text-[#1d1d1f]"; }
+  // 규모 판정 (거래대금 최근 vs 2년평균)
+  const rt=(tr&&tb)?tr/tb:null; let scl, sclCls;
+  if(rt==null){ scl="-"; sclCls="text-[#86868b]"; }
+  else if(rt>1.5){ scl="🔥 규모 확장 (예금→주식)"; sclCls="text-orange-600 font-semibold"; }
+  else if(rt>1.15){ scl="규모 완만 확장"; sclCls="text-amber-600"; }
+  else { scl="규모 보합"; sclCls="text-[#1d1d1f]"; }
+  const cell=(label,val,sub)=>`<div class="flex-1 min-w-[140px]"><div class="text-[10px] text-[#86868b] uppercase tracking-wide">${label}</div><div class="text-[15px] font-semibold text-[#1d1d1f] leading-tight">${val}</div><div class="text-[10px] text-[#86868b]">${sub||""}</div></div>`;
+  el.innerHTML=`<div class="flex items-center gap-1.5 mb-2"><span class="text-[13px] font-semibold text-[#1d1d1f]">🛰️ regime 전환 게이지</span><span class="text-[10px] text-[#86868b]">예금→주식 이동이 규모로 오는가 / 행태로 오는가 (최근 ${g.win}일, 거래대금 정규화)</span></div>
+    <div class="flex flex-wrap gap-4">
+      ${cell("개인 행태 (norm β)", (bi==null?"-":bi.toFixed(2)), `8년기준 ${ref.beta_indiv||"-"} · <span class="${behCls}">${beh}</span>`)}
+      ${cell("개인 flow강도", (fi==null?"-":fi+"%"), `거래대금 대비 순매수 · 기준 ${ref.fi_indiv_2018||"-"}%→${ref.fi_indiv_2026||"-"}%(2026)`)}
+      ${cell("거래대금(최근20일)", (tr==null?"-":tr+"조"), `2년평균 ${tb??"-"}조 · <span class="${sclCls}">${scl}</span>`)}
+    </div>
+    ${sparkBeta(g.beta_trend)}
+    <div class="text-[11px] text-[#6e6e73] mt-2 pt-2 border-t border-[#e8e8ed]">📌 규모(거래대금·flow강도)는 커져도 행태(개인 norm β 음수)가 유지되면 개인은 여전히 '받아주는 쪽'. β가 0(점선)으로 올라서야 진짜 주도세력 전환.</div>`;
+}
+function sparkBeta(pts){
+  if(!pts||pts.length<2) return "";
+  const W=260,H=40,pad=3, lo=-0.4, hi=0.05;   // 0선=전환 임계
+  const x=i=>pad+i*(W-2*pad)/(pts.length-1);
+  const y=b=>pad+(hi-b)/(hi-lo)*(H-2*pad);
+  const line=pts.map((p,i)=>`${x(i).toFixed(0)},${y(p.beta).toFixed(0)}`).join(" ");
+  const last=pts[pts.length-1], y0=y(0).toFixed(0);
+  return `<div class="mt-2"><div class="text-[10px] text-[#86868b] mb-0.5">개인 norm β 추세 (2년, 점선=0 전환선) · ${pts[0].date}→${last.date}</div>
+    <svg width="${W}" height="${H}" class="overflow-visible">
+      <line x1="${pad}" y1="${y0}" x2="${W-pad}" y2="${y0}" stroke="#ff6482" stroke-width="1" stroke-dasharray="3,2"/>
+      <polyline points="${line}" fill="none" stroke="#0071e3" stroke-width="1.5"/>
+      <circle cx="${x(pts.length-1).toFixed(0)}" cy="${y(last.beta).toFixed(0)}" r="2.5" fill="#0071e3"/>
+      <text x="${(x(pts.length-1)-4).toFixed(0)}" y="${(y(last.beta)-5).toFixed(0)}" font-size="9" fill="#0071e3" text-anchor="end">${last.beta.toFixed(2)}</text>
+    </svg></div>`;
 }
 function buildSankey(tops, balLabel){
   const sells=(tops.top_sell||[]).slice(0,7), buys=(tops.top_buy||[]).slice(0,7);
@@ -225,6 +290,7 @@ async function renderKrx(){
     KRXDATA=d;
     document.getElementById("krxUpdated").textContent = `· ${d.updated} · ${d.market} · ${d.dates.length}거래일(${d.years||2}년)`;
     renderRegime(d);
+    renderGauge(d);
     const cum=d.indiv_cum||[]; const last=cum.length?cum[cum.length-1]:0;
     document.getElementById("cumNow").innerHTML = last>=0
       ? `<span class="text-emerald-600 font-semibold">누적 +${last}조 · 매집(현금→주식)</span>`
@@ -311,7 +377,7 @@ function renderPriority(){
   return fetch("/api/brief?days=45").then(r=>r.json()).then(b=>{
     const wrap=document.getElementById("briefSegments");
     if(b.error){ wrap.innerHTML=`<p class="text-[#86868b] text-xs">${b.error}</p>`; return; }
-    document.getElementById("briefRegime").textContent=`· 시황: ${b.regime.dominant} 주도 (${b.regime_risk})`;
+    document.getElementById("briefRegime").textContent=`· 시황: ${b.regime.active||b.regime.dominant} 주도 (${b.regime_risk})`;
     const wl=document.getElementById("watchList");
     if(b.watch && b.watch.length){
       wl.innerHTML=`<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3">
@@ -350,7 +416,7 @@ async function renderTalkingPoints(){
   }catch(e){}
 }
 async function refreshAll(){   // 캐시 재조회(가벼움) → 화면 반영
-  try{ await Promise.all([renderKrx(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
+  try{ await Promise.all([renderCli(), renderKrx(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
   document.getElementById("lastFetch").textContent = new Date().toTimeString().slice(0,8);
 }
 let POLLING=false;

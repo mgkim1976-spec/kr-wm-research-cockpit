@@ -5,6 +5,9 @@
 data/research_db.json
 data/krx_market.json
 data/dossiers.json
+data/cli_phase.json
+data/krx_history.json
+data/regime_history.jsonl
 
 # downloaded PDFs (대용량·저작권 — 대시보드는 링크만 사용)
 research_reports/

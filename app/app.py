@@ -23,6 +23,7 @@ sys.path.insert(0, str(APP_DIR / "core" / "engine"))
 sys.path.insert(0, str(APP_DIR / "core" / "adapters"))
 import scenario_engine as se   # noqa: E402
 import krx_market              # noqa: E402
+import cli_phase               # noqa: E402
 
 app = Flask(__name__, template_folder=str(APP_DIR / "templates"))
 PORT = 8768
@@ -60,6 +61,12 @@ def api_state():
 def api_krx():
     """① KRX 시장 수급 (캐시). daily_update.sh 가 갱신, 대시보드는 캐시만 읽음."""
     return jsonify(krx_market.load_cached())
+
+
+@app.route("/api/cli")
+def api_cli():
+    """OECD 한국 경기선행지수(CLI) 4국면 + 국면별 과거 fwd 지수수익. daily_update 가 갱신."""
+    return jsonify(cli_phase.load_cached())
 
 
 @app.route("/api/flow_link")
