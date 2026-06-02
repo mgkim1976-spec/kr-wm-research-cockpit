@@ -267,6 +267,34 @@ def crowding_alert(krx: dict, win: str = "5") -> list[dict]:
     return out
 
 
+def rebalance_ideas(krx: dict, max_n: int = 8) -> dict:
+    """종목별 주도주체·궤적 기반 신규매수(TO)·비중축소(FROM)·리밸런싱 페어(동일업종 우선).
+    FROM = 개인 단독(트랩)/스마트머니 이탈 → 비중축소·점검.
+    TO   = 외인·기관 동반/주도 + 지속매집/신규 → 신규매수·비중확대.
+    pair = FROM 보유 고객을 같은 업종의 TO로 비중 이동 (동일업종 없으면 분산 대안)."""
+    sf = krx.get("stock_flows", {})
+    trim, add = [], []
+    for tk, rec in sf.items():
+        L = rec.get("lead") or {}
+        a, st, tj = L.get("actor"), L.get("structure", ""), L.get("traj", "")
+        item = {"ticker": tk, "name": rec.get("name"), "sector": rec.get("sector"),
+                "actor": a, "structure": st, "traj": tj, "ret5": rec.get("ret5"),
+                "ret50": rec.get("ret50"), "mktcap": rec.get("mktcap"), "by": L.get("by")}
+        if "트랩" in st or "이탈" in tj:
+            trim.append(item)
+        elif a in ("외국인", "기관") and ("동반" in st or "주도" in st) and ("매집" in tj or "신규" in tj):
+            add.append({**item, "net5": L.get("net5")})
+    trim.sort(key=lambda x: (x["ret5"] if x["ret5"] is not None else 0))   # 약세(물림 위험) 먼저
+    add.sort(key=lambda x: -(x.get("net5") or 0))                          # 스마트머니 매집 강한 순
+    pairs = []
+    for f in trim[:max_n]:
+        same = [t for t in add if t["sector"] and t["sector"] == f["sector"]]
+        tos = (same or add)[:2]
+        if tos:
+            pairs.append({"from": f, "to": tos, "same_sector": bool(same)})
+    return {"trim": trim[:max_n], "add": add[:max_n], "pairs": pairs}
+
+
 def compute_havens(krx: dict, win: str = "5") -> list[dict]:
     """외인·기관 매집 종목: 개인은 순매도하나 외국인·기관이 사 모으는 종목 — 개인주도 국면의 분산 대안."""
     tops = krx.get("tops", {}).get(win, {})
@@ -420,7 +448,7 @@ def contact_priority(days: int = 45, win: str = "5") -> dict:
         s.pop("items", None)
     return {"regime": {**regime, "active": dom, "active_meta": act},
             "regime_risk": REGIME_RISK.get(dom, ""), "anchor": anchor,
-            "watch": watch, "segments": segs}
+            "watch": watch, "segments": segs, "rebalance": rebalance_ideas(krx)}
 
 
 # ── CLI (검증용) ──────────────────────────────────────────────────────────────

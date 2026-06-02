@@ -79,8 +79,10 @@ def _classify_lead(rec: dict) -> dict:
             "ret5": rec.get("ret5"), "ret20": rec.get("ret20"), "ret50": rec.get("ret50"), "by": n5}
 
 
-def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict) -> dict:
-    """상위 리스트에 등장한 종목(active)별 3주체 순매수(1/5/20일)+등락률+주도판정."""
+def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict,
+                 sector_map: dict | None = None) -> dict:
+    """상위 리스트에 등장한 종목(active)별 3주체 순매수(1/5/20/50일)+등락률+업종·시총+주도판정."""
+    sector_map = sector_map or {}
     active = set()
     for invs in tops.values():
         for t in invs.values():
@@ -89,8 +91,10 @@ def _stock_flows(tops: dict, flows_full: dict, ret_by_w: dict, name_by_tk: dict)
                     active.add(x["ticker"])
     out = {}
     for tk in active:
+        sm = sector_map.get(tk, {})
         rec = {"name": name_by_tk.get(tk, ""), "ret5": ret_by_w.get("5", {}).get(tk),
-               "ret20": ret_by_w.get("20", {}).get(tk), "ret50": ret_by_w.get("50", {}).get(tk)}
+               "ret20": ret_by_w.get("20", {}).get(tk), "ret50": ret_by_w.get("50", {}).get(tk),
+               "sector": sm.get("sector", ""), "mktcap": sm.get("mktcap")}
         for w in ("1", "5", "20", "50"):
             rec[w] = {a: flows_full.get((w, a), {}).get(tk, 0) for a in _INV3}
         rec["lead"] = _classify_lead(rec)
@@ -204,8 +208,18 @@ def fetch_market(years: float = 2, market: str = "KOSPI", top_n: int = 12,
             except Exception as e:
                 out.setdefault("top_error", {})[f"{w}_{disp}"] = str(e)[:120]
 
+    # 4.4) 업종·시총 (리밸런싱 동일업종 매칭 + 시총 참고) — 1콜
+    sector_map: dict = {}
+    try:
+        time.sleep(THROTTLE_SEC)
+        sc = stock.get_market_sector_classifications(end_b, market)
+        sector_map = {tk: {"sector": sc.loc[tk].get("업종명", ""),
+                           "mktcap": round(float(sc.loc[tk]["시가총액"]) / 1e12, 1)} for tk in sc.index}
+    except Exception as e:
+        out.setdefault("top_error", {})["sector"] = str(e)[:120]
+
     # 4.5) 종목별 주도주체 + 매집/이탈 궤적 (active 종목: 상위 리스트에 등장한 종목 합집합)
-    out["stock_flows"] = _stock_flows(out["tops"], flows_full, ret_by_w, name_by_tk)
+    out["stock_flows"] = _stock_flows(out["tops"], flows_full, ret_by_w, name_by_tk, sector_map)
 
     # 4.5) KOSPI 지수 종가 → 일별수익률 (방향주도 판정용). dates 와 정렬.
     try:

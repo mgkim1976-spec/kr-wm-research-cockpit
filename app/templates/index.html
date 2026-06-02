@@ -415,7 +415,28 @@ function renderPriority(){
         ${(cov||req)?`<div class="text-xs mt-1 text-[#1d1d1f]">📑 ${cov}${cov&&req?" · ":""}${req}</div>`:""}`;
       wrap.appendChild(card);
     });
+    renderRebalance(b.rebalance, wrap);
   }).catch(()=>{});
+}
+function renderRebalance(rb, wrap){
+  if(!rb || (!(rb.add||[]).length && !(rb.pairs||[]).length)) return;
+  const card=document.createElement("div");
+  card.className="border border-[#e8e8ed] bg-white rounded-2xl p-3";
+  const addChips=(rb.add||[]).slice(0,8).map(t=>`<span class="text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full px-2.5 py-1">🟢 ${t.name} <span class="opacity-70">${t.actor}·${t.traj}${t.sector?(" · "+t.sector):""}${t.ret50!=null?(" · 분기 "+(t.ret50>=0?"+":"")+t.ret50+"%"):""}</span></span>`).join(" ");
+  const pairRows=(rb.pairs||[]).map(p=>{
+    const f=p.from, tos=(p.to||[]).map(t=>`${t.name}<span class="text-[10px] text-[#86868b]">(${t.actor}·${t.traj})</span>`).join(" / ");
+    return `<div class="text-xs py-1 border-t border-[#f0f0f2] flex flex-wrap items-center gap-1">
+        <span class="text-rose-600 font-medium">🔴 ${f.name}</span><span class="text-[10px] text-[#86868b]">${f.structure}·${f.traj}${f.ret5!=null?(" "+(f.ret5>=0?"+":"")+f.ret5+"%"):""}</span>
+        <span class="text-[#6e6e73]">→</span><span class="text-emerald-700 font-medium">${tos}</span>
+        <span class="text-[10px] ${p.same_sector?"text-emerald-600":"text-amber-600"}">${p.same_sector?("同 "+(f.sector||"업종")):"분산(타업종)"}</span></div>`;
+  }).join("");
+  card.innerHTML=`<div class="text-sm text-[#1d1d1f] font-semibold mb-1">🔄 리밸런싱 · 신규매수 아이디어 <span class="text-[10px] text-[#86868b] font-normal">종목별 주도주체·매집/이탈 궤적 기반</span></div>
+    <div class="text-[10px] text-[#86868b] mb-1">🟢 신규매수/비중확대 (스마트머니 동반·지속매집)</div>
+    <div class="flex flex-wrap gap-1.5 mb-2">${addChips||'<span class="text-[#86868b] text-xs">후보 없음</span>'}</div>
+    <div class="text-[10px] text-[#86868b] mb-0.5">🔴→🟢 비중이동 (트랩·이탈 보유 고객 → 동일업종 매집주)</div>
+    ${pairRows||'<span class="text-[#86868b] text-xs">페어 없음</span>'}
+    <div class="text-[10px] text-[#86868b] mt-1.5">※ 전량매도 아님 — 비중 점검·분산. 同=동일업종 매칭, 분산=타업종 대안.</div>`;
+  wrap.appendChild(card);
 }
 
 async function renderTalkingPoints(){
