@@ -198,6 +198,7 @@ async function renderInvestor(){
   const c=K.current||{}, low=(K.multi_cond||{}).low_predictive||{};
   const conf=low["낙폭+연기금"]||{}, f12=((K.turning||{}).big_low||{}).forward?.["12개월"]||{};
   const dm=K.down_market||{};
+  const bln=((K.turning||{}).big_low||{}).n||"14";
   const fpct=((((d.flow||{}).markets||{}).KOSPI||{}).foreign_pct)||{};
   const fpv=Object.entries(fpct), fpLast=fpv.length?fpv[fpv.length-1]:null;
   const jo=x=> (x/1e4).toFixed(0);  // 억→조
@@ -215,21 +216,23 @@ async function renderInvestor(){
       🩸 <b>하락장 항복</b>: 외국인 상관 ${dm.corr?.["외국인"]??"—"} (투매 극심할수록 반등↑) · 개인 ${dm.corr?.["개인"]??"—"}<br>
       ⚠️ <b>고점은 예측 불가</b>(리프트<2) — 진단용. 단일 자금흐름 전환도 예측 아님(재현율 착시).
     </div>
+    <div class="text-[10px] text-[#86868b] mb-2">📐 <b>큰 저점 기준</b>: 국소최저(±40일) + 고점대비 낙폭 −12%↑ + 이후 반등 +12%↑ (16년 KOSPI ${bln}개)</div>
     <div class="grid grid-cols-1 gap-3">
-      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">외국인 지분율 추이 <span class="text-[#86868b] font-normal">(시총가중 %, 16년)</span></div><div style="position:relative;height:110px"><canvas id="chartFgPct"></canvas></div></div>
-      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">투자자 누적 순매수 <span class="text-[#86868b] font-normal">(조원) — 🔵외국인 🟣연기금 🟠개인, 자금 이동</span></div><div style="position:relative;height:140px"><canvas id="chartCumFlow"></canvas></div></div>
-      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">큰 저점 이후 지수 궤적 <span class="text-[#86868b] font-normal">(중앙값 %, equity curve)</span></div><div style="position:relative;height:110px"><canvas id="chartEquity"></canvas></div></div>
+      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">외국인 지분율 추이 <span class="text-[#86868b] font-normal">(보유수량÷상장주식수 — 순매수만 반영, 주가·평가 무관)</span></div><div style="position:relative;height:110px"><canvas id="chartFgPct"></canvas></div></div>
+      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">최근 자금 이동 <span class="text-[#86868b] font-normal">(60일 순매수 조원) — 🔵외국인 🟣연기금 🟠개인</span></div><div style="position:relative;height:140px"><canvas id="chartRollFlow"></canvas></div></div>
+      <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">큰 저점 이후 지수 궤적 <span class="text-[#86868b] font-normal">(중앙값 %, 진입=저점확인일)</span></div><div style="position:relative;height:110px"><canvas id="chartEquity"></canvas></div></div>
     </div>`;
   el.style.display="";
   // 차트 렌더 (innerHTML 후 canvas 존재)
   try{
     const fpm=Object.keys(fpct), fpvv=Object.values(fpct);
     lineChart("chartFgPct", fpm, [{data:fpvv, borderColor:"#0a84ff", fill:false, tension:.2, borderWidth:1.5, pointRadius:0}]);
-    const cw=Object.keys(K==null?{}:((d.flow.markets.KOSPI.cumulative)||{}));
-    const cum=d.flow.markets.KOSPI.cumulative||{};
-    const col={"외국인":"#0a84ff","연기금":"#8e5cff","개인":"#f5a623"};
-    lineChart("chartCumFlow", cw, ["외국인","연기금","개인"].map(k=>({
-      data:cw.map(w=>Math.round((cum[w][k]||0)/1e4)), borderColor:col[k], fill:false, tension:.2, borderWidth:1.5, pointRadius:0, label:k})));
+    // 최근 자금 이동 = 60일 롤링 순매수(누적 아님) — 주간 순매수를 60일(≈13주) 롤링합
+    const wk=d.flow.markets.KOSPI.weekly||{}, ww=Object.keys(wk);
+    const col={"외국인":"#0a84ff","연기금":"#8e5cff","개인":"#f5a623"}, RW=13;
+    const roll=(k)=>ww.map((_,i)=>{ let s=0; for(let j=Math.max(0,i-RW+1);j<=i;j++) s+=(wk[ww[j]][k]||0); return Math.round(s/1e4); });
+    lineChart("chartRollFlow", ww, ["외국인","연기금","개인"].map(k=>({
+      data:roll(k), borderColor:col[k], fill:false, tension:.2, borderWidth:1.5, pointRadius:0, label:k})));
     const hz=["1주","2주","1개월","3개월","6개월","12개월"];
     const fwd=((K.turning||{}).big_low||{}).forward||{};
     lineChart("chartEquity", ["진입"].concat(hz), [{data:[0].concat(hz.map(h=>(fwd[h]||{}).median)),
