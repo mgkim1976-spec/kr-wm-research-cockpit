@@ -69,6 +69,14 @@ def api_cli():
     return jsonify(cli_phase.load_cached())
 
 
+@app.route("/api/investor")
+def api_investor():
+    """투자자 자금이동 — 변곡점 예측(낙폭+연기금)·하락장 항복·외국인 지분율. daily_update 가 갱신."""
+    import investor_flow
+    import investor_pattern
+    return jsonify({"pattern": investor_pattern.load_cached(), "flow": investor_flow.load_cached()})
+
+
 @app.route("/api/flow_link")
 def api_flow_link():
     """② 수급↔리서치: 주도주체 순매수상위+외인/기관 매집 → 당사/타사 리서치·도시에 + 커버리지 GAP."""

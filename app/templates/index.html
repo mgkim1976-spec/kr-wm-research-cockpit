@@ -40,6 +40,7 @@
         <div id="cliPhase" class="rounded-2xl p-4 mb-4 border"></div>
         <div id="regimeBanner" class="rounded-2xl p-4 mb-4 border"></div>
         <div id="regimeGauge" class="rounded-2xl p-4 mb-4 border border-[#e8e8ed] bg-[#fbfbfd]"></div>
+        <div id="investorPanel" class="rounded-2xl p-4 mb-4 border border-[#e8e8ed] bg-[#fbfbfd]"></div>
         <!-- 헤드라인: 개인 누적 순매수 -->
         <div class="panel p-4 mb-4">
           <div class="flex items-center justify-between mb-1">
@@ -190,6 +191,33 @@ function renderRegime(d){
 }
 const CLI_TINT={"확장":"bg-emerald-50 border-emerald-200","회복":"bg-sky-50 border-sky-200","둔화":"bg-amber-50 border-amber-200","수축":"bg-rose-50 border-rose-200"};
 const CLI_EMO={"확장":"📈","회복":"🌱","둔화":"📉","수축":"🥶"};
+async function renderInvestor(){
+  const el=document.getElementById("investorPanel"); if(!el) return;
+  let d; try{ d=await (await fetch("/api/investor")).json(); }catch(e){ return; }
+  const K=((d.pattern||{}).markets||{}).KOSPI; if(!K){ el.style.display="none"; return; }
+  const c=K.current||{}, low=(K.multi_cond||{}).low_predictive||{};
+  const conf=low["낙폭+연기금"]||{}, f12=((K.turning||{}).big_low||{}).forward?.["12개월"]||{};
+  const dm=K.down_market||{};
+  const fpct=((((d.flow||{}).markets||{}).KOSPI||{}).foreign_pct)||{};
+  const fpv=Object.entries(fpct), fpLast=fpv.length?fpv[fpv.length-1]:null;
+  const jo=x=> (x/1e4).toFixed(0);  // 억→조
+  el.innerHTML=`
+    <div class="text-[13px] font-semibold mb-2">📉 변곡점·자금이동 <span class="text-[#86868b] font-normal">(KOSPI · 16년 통계검증)</span></div>
+    <div class="text-[13px] text-[#1d1d1f] mb-2">${c.signal||""}</div>
+    <div class="flex flex-wrap gap-1.5 text-[11px] mb-2">
+      <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">낙폭 ${c.drawdown}%</span>
+      <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">외국인 60일 ${jo(c.foreign_60)}조</span>
+      <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">연기금 60일 ${jo(c.pension_60)}조</span>
+      ${fpLast?`<span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">외국인 지분율 ${fpLast[1]}%</span>`:""}
+    </div>
+    <div class="text-[11px] text-[#86868b] leading-relaxed">
+      ✅ <b>저점 신호</b>(예측): 낙폭 -12% + 연기금 매수 → 정밀도 ${conf.precision}%·리프트 ${conf.lift}배 · 12개월 중앙값 <b>${f12.median}%</b>(우상향 편향 주의)<br>
+      🩸 <b>하락장 항복</b>: 외국인 상관 ${dm.corr?.["외국인"]??"—"} (투매 극심할수록 반등↑) · 개인 ${dm.corr?.["개인"]??"—"}<br>
+      ⚠️ <b>고점은 예측 불가</b>(리프트<2) — 진단용. 단일 자금흐름 전환도 예측 아님(재현율 착시).
+    </div>`;
+  el.style.display="";
+}
+
 async function renderCli(){
   const el=document.getElementById("cliPhase"); if(!el) return;
   let d; try{ d=await (await fetch("/api/cli")).json(); }catch(e){ el.style.display="none"; return; }
@@ -452,7 +480,7 @@ async function renderTalkingPoints(){
   }catch(e){}
 }
 async function refreshAll(){   // 캐시 재조회(가벼움) → 화면 반영
-  try{ await Promise.all([renderCli(), renderKrx(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
+  try{ await Promise.all([renderCli(), renderKrx(), renderInvestor(), renderFlowLink(), renderPriority(), renderTalkingPoints()]); }catch(e){}
   document.getElementById("lastFetch").textContent = new Date().toTimeString().slice(0,8);
 }
 let POLLING=false;

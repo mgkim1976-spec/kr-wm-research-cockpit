@@ -22,6 +22,8 @@ STEPS = [
     ["download_reports.py"],
     [str(Path("app") / "core" / "adapters" / "krx_market.py"), "--years", "2"],
     [str(Path("app") / "core" / "adapters" / "cli_phase.py")],
+    [str(Path("app") / "core" / "adapters" / "investor_flow.py")],
+    [str(Path("app") / "core" / "adapters" / "investor_pattern.py")],
     ["build_dossiers.py"],
 ]
 
