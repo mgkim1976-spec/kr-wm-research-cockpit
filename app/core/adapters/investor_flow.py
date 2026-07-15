@@ -85,7 +85,8 @@ def build_cache(today: date | None = None) -> dict:
             "cumulative": _ser(cum),
             "rolling_latest": roll_latest,
             "foreign_pct": fpct,
-            "last_flow": _ser(inv.tail(5)),   # 최근 5일 일별 순매수(요약)
+            "last_flow": _ser(inv.tail(5)),    # 최근 5일 일별 순매수(요약)
+            "daily20": _ser(inv.tail(20)),     # 최근 20거래일 일별 순매수(대시보드 추이차트)
         }
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
