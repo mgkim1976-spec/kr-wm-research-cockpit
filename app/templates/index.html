@@ -191,6 +191,13 @@ function renderRegime(d){
 }
 const CLI_TINT={"확장":"bg-emerald-50 border-emerald-200","회복":"bg-sky-50 border-sky-200","둔화":"bg-amber-50 border-amber-200","수축":"bg-rose-50 border-rose-200"};
 const CLI_EMO={"확장":"📈","회복":"🌱","둔화":"📉","수축":"🥶"};
+function styleTable(sp){
+  const phs=["회복","확장","둔화","수축"], invs=["외국인","연기금","금융투자","투신","개인"];
+  const cell=v=> (v==null)?'<td class="text-center text-[#ccc]">—</td>':`<td class="text-center ${v>0.1?"text-blue-600":v<-0.1?"text-rose-500":"text-[#86868b]"}">${v}</td>`;
+  const rows=invs.map(iv=>`<tr><td class="font-medium pr-2 py-0.5">${iv}</td>${phs.map(ph=>cell(((sp[ph]||{})[iv]||{}).mom)).join("")}</tr>`).join("");
+  return `<div class="text-[10px] text-[#86868b] mb-1">순매수 vs 과거수익 상관 · <span class="text-blue-600">파랑=추세추종(모멘텀)</span> · <span class="text-rose-500">빨강=역추세(평균회귀)</span></div><table class="w-full text-[10px]"><thead><tr class="text-[#86868b]"><th class="text-left">주체</th>${phs.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 async function renderInvestor(){
   const el=document.getElementById("investorPanel"); if(!el) return;
   let d; try{ d=await (await fetch("/api/investor")).json(); }catch(e){ return; }
@@ -205,6 +212,7 @@ async function renderInvestor(){
   el.innerHTML=`
     <div class="text-[13px] font-semibold mb-2">📉 변곡점·자금이동 <span class="text-[#86868b] font-normal">(KOSPI · 16년 통계검증)</span></div>
     <div class="text-[13px] text-[#1d1d1f] mb-2">${c.signal||""}</div>
+    ${c.phase_alert?`<div class="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2">⚠️ ${c.phase_alert}</div>`:""}
     <div class="flex flex-wrap gap-1.5 text-[11px] mb-2">
       <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">낙폭 ${c.drawdown}%</span>
       <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">외국인 60일 ${jo(c.foreign_60)}조</span>
@@ -222,6 +230,10 @@ async function renderInvestor(){
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">외국인 지분율 추이 <span class="text-[#86868b] font-normal">(보유수량÷상장주식수 — 순매수만 반영, 주가·평가 무관)</span></div><div style="position:relative;height:110px"><canvas id="chartFgPct"></canvas></div></div>
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">최근 자금 이동 <span class="text-[#86868b] font-normal">(60일 순매수 조원) — 🔵외국인 🟣연기금 🟠개인</span></div><div style="position:relative;height:140px"><canvas id="chartRollFlow"></canvas></div></div>
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">큰 저점 이후 지수 궤적 <span class="text-[#86868b] font-normal">(중앙값 %, 진입=저점확인일)</span></div><div style="position:relative;height:110px"><canvas id="chartEquity"></canvas></div></div>
+    </div></details>
+    <details class="mt-1"><summary class="text-[11px] text-[#0071e3] cursor-pointer select-none py-1">🎭 국면별 투자 스타일 (모멘텀 vs 역추세)</summary>
+    <div class="panel p-3 mt-2">${styleTable(K.style_by_phase||{})}
+      <div class="text-[10px] text-[#86868b] mt-2">📌 스타일은 <b>국면 조건부</b>(전체 상관은 상쇄 착시). 외국인은 확장에만 역추세(차익), 개인은 확장에만 추격(FOMO), 증권은 확장에만 선행 — <b>확장 후반=외국인 이탈+개인 추격</b>. 상관 ±0.3~0.5(경향, 결정론 아님).</div>
     </div></details>`;
   el.style.display="";
   const _det=el.querySelector("details"); let _drawn=false;

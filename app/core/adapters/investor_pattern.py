@@ -125,6 +125,31 @@ def _down_market(arr, fg, N, down=-10, fwd=20):
     return out
 
 
+def _style_by_phase(arr, fg, index, N, pbm, look=20, fwd_w=20, sm=5):
+    """국면 조건부 투자스타일 — 모멘텀축(순매수 vs 과거수익)·예측축(vs 미래수익). ⚠️스타일은 국면 의존
+    (전체 상관은 상쇄 착시). 발견: 외국인=확장에만 역추세(차익), 개인=확장에만 추격(FOMO),
+    증권=확장에만 선행. → '확장 후반=외국인 이탈+개인 추격'이 실전 경보. 상관 ±0.3~0.5(경향, 결정론 아님)."""
+    import numpy as np
+    import pandas as pd
+    past = np.array([arr[i] / arr[i - look] - 1 if i >= look else np.nan for i in range(N)]) * 100
+    fwd = np.array([arr[i + fwd_w] / arr[i] - 1 if i + fwd_w < N else np.nan for i in range(N)]) * 100
+    pod = np.array([pbm.get(d.strftime("%Y-%m")) for d in index])
+    out = {}
+    for ph in ("회복", "확장", "둔화", "수축"):
+        mask = pod == ph
+        if mask.sum() < 20:
+            continue
+        d = {}
+        for c in KEYINV:
+            ns = fg[c].rolling(sm).sum().values
+            m = pd.Series(ns)[mask].corr(pd.Series(past)[mask])
+            f = pd.Series(ns)[mask].corr(pd.Series(fwd)[mask])
+            d[c] = {"mom": None if pd.isna(m) else round(float(m), 2),
+                    "pred": None if pd.isna(f) else round(float(f), 2)}
+        out[ph] = d
+    return out
+
+
 def build_cache(today: date | None = None) -> dict:
     import FinanceDataReader as fdr
     import numpy as np
@@ -134,7 +159,14 @@ def build_cache(today: date | None = None) -> dict:
     krx_market._load_creds()
     from pykrx import stock
     today = today or date.today()
-    out = {"updated": today.isoformat(), "win_th": int(TH * 100), "hz": HZL, "markets": {}}
+    try:
+        import cli_phase
+        pbm = cli_phase.phase_series(cli_phase.fetch_cli())    # {월: 국면} — 국면별 스타일용(1회 로드)
+    except Exception:
+        pbm = {}
+    cur_phase = pbm.get(sorted(pbm)[-1]) if pbm else None
+    out = {"updated": today.isoformat(), "win_th": int(TH * 100), "hz": HZL,
+           "cur_phase": cur_phase, "markets": {}}
 
     for mkt, code in MKTS.items():
         idx = fdr.DataReader(code, "2010-01-01", today.isoformat())["Close"]
@@ -173,6 +205,7 @@ def build_cache(today: date | None = None) -> dict:
         # 다중조건 정밀도(예측력 검증) — 저점: 낙폭+연기금(3.4배 최적). 고점: 예측불가(진단용).
         multi = _multi_cond(arr, fg, BL, BH, N)
         down_mkt = _down_market(arr, fg, N)   # 하락장 항복=바닥 진단
+        style = _style_by_phase(arr, fg, ix.index, N, pbm) if pbm else {}
 
         # 현재 국면: 최근 250일 고점 → 그 이후 저점 → 현재 (낙폭·반등)
         seg = arr[-250:] if N >= 250 else arr
@@ -209,8 +242,16 @@ def build_cache(today: date | None = None) -> dict:
                                  f"연기금 매수전환 대기(확인 시 {m_conf.get('precision','?')}%)")
         else:
             current["signal"] = "정상 구간(낙폭 -12% 미만)"
+        # 현재 국면 스타일 경보 (확장=외국인 이탈+개인 추격 = 강세장 후반)
+        if cur_phase == "확장" and style.get("확장"):
+            sx = style["확장"]
+            fxm = (sx.get("외국인") or {}).get("mom")
+            pim = (sx.get("개인") or {}).get("mom")
+            if fxm is not None and fxm < 0 and pim is not None and pim > 0:
+                current["phase_alert"] = (f"확장국면 — 외국인 역추세({fxm:+.2f}, 차익)·개인 추격({pim:+.2f}, FOMO) "
+                                          "= 강세장 후반 신호")
         out["markets"][mkt] = {"turning": turning, "interval": interval, "multi_cond": multi,
-                               "down_market": down_mkt, "current": current}
+                               "down_market": down_mkt, "style_by_phase": style, "current": current}
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
