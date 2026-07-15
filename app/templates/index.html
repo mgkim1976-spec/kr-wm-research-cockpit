@@ -33,9 +33,16 @@
       <button id="refreshBtn" title="당사·타사 리서치 크롤 + KRX 수급 + 종목 도시에(LLM)를 새로 수집 (수 분 소요)" class="chip text-[13px] px-3 py-1.5 rounded-full bg-white border border-[#d2d2d7] text-[#1d1d1f] font-medium">🔄 데이터 수집·반영</button>
     </header>
 
+    <!-- 온보딩: 사용법 안내 -->
+    <div class="mb-6 rounded-2xl bg-[#f0f7ff] border border-[#d4e4fb] p-4">
+      <div class="text-[15px] font-semibold text-[#1d1d1f] mb-1">📋 이 대시보드로 오늘 상담을 준비하세요</div>
+      <div class="text-[13px] text-[#515154] leading-relaxed">위에서 아래로 훑으면 끝 — <b>①</b> 지금 시장이 어떤지(국면·수급) → <b>②</b> 그에 맞는 리서치 → <b>③</b> 연락할 고객 우선순위 → <b>💬</b> 상담 멘트. 파란 글씨(접기)를 누르면 근거 데이터가 펼쳐집니다.</div>
+    </div>
+
     <!-- ① 시황 · KRX 시장 수급 -->
     <section class="card p-6 mb-6">
-      <h2 class="sec mb-4">① 시황 · 시장 수급 <span id="krxUpdated" class="text-[#86868b] text-xs font-normal"></span></h2>
+      <h2 class="sec mb-2">① 시황 · 시장 수급 <span id="krxUpdated" class="text-[#86868b] text-xs font-normal"></span></h2>
+      <div class="text-xs text-[#86868b] mb-4">지금 시장이 어떤 국면이고 누가 사고파는지 — <b>방향의 1차 신호는 개별 종목보다 '국면'</b>입니다. 오늘 시장의 큰 그림을 여기서 잡으세요.</div>
       <div id="krxBody">
         <div id="cliPhase" class="rounded-2xl p-4 mb-4 border"></div>
         <div id="regimeBanner" class="rounded-2xl p-4 mb-4 border"></div>
@@ -209,23 +216,30 @@ async function renderInvestor(){
   const fpct=((((d.flow||{}).markets||{}).KOSPI||{}).foreign_pct)||{};
   const fpv=Object.entries(fpct), fpLast=fpv.length?fpv[fpv.length-1]:null;
   const jo=x=> (x/1e4).toFixed(0);  // 억→조
+  const A=[];
+  if(c.drawdown<=-12) A.push(`주가가 고점 대비 <b>${Math.abs(c.drawdown)}% 빠진</b> '큰 저점' 구간`);
+  if(c.foreign_60<0&&c.pension_60<0) A.push("아직 외국인·연금이 <b>파는 중이라 바닥은 미확인</b>");
+  else if(c.foreign_60>0&&c.pension_60>0) A.push("외국인·연금이 <b>사기 시작 — 바닥 신호</b>");
+  const plain=(A.length?A.join(", ")+".":"특이 신호 없는 정상 구간입니다.")+(f12.median?` 과거 이런 '큰 저점'에선 <b>1년 뒤 대체로 반등</b>(중앙값 +${f12.median}%)했으나, 미래 보장은 아닙니다.`:"");
+  const alertPlain=c.phase_alert?`<div class="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2">⚠️ <b>강세장 후반</b> — 스마트머니(외국인)는 팔고 개인이 사는 국면입니다 (뒤늦은 추격 주의).</div>`:"";
   el.innerHTML=`
-    <div class="text-[13px] font-semibold mb-2">📉 변곡점·자금이동 <span class="text-[#86868b] font-normal">(KOSPI · 16년 통계검증)</span></div>
-    <div class="text-[13px] text-[#1d1d1f] mb-2">${c.signal||""}</div>
-    ${c.phase_alert?`<div class="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2">⚠️ ${c.phase_alert}</div>`:""}
+    <div class="text-[13px] font-semibold mb-2">📉 지금 시장 진단 <span class="text-[#86868b] font-normal">(KOSPI · 16년 데이터)</span></div>
+    <div class="text-[13px] text-[#1d1d1f] leading-relaxed mb-2">${plain}</div>
+    ${alertPlain}
     <div class="flex flex-wrap gap-1.5 text-[11px] mb-2">
       <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">낙폭 ${c.drawdown}%</span>
       <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">외국인 60일 ${jo(c.foreign_60)}조</span>
       <span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">연기금 60일 ${jo(c.pension_60)}조</span>
       ${fpLast?`<span class="chip px-2 py-0.5 rounded-full bg-white border border-[#d2d2d7]">외국인 지분율 ${fpLast[1]}%</span>`:""}
     </div>
-    <div class="text-[11px] text-[#86868b] leading-relaxed mb-3">
-      ✅ <b>저점 신호</b>(예측): 낙폭 -12% + 연기금 매수 → 정밀도 ${conf.precision}%·리프트 ${conf.lift}배 · 12개월 중앙값 <b>${f12.median}%</b>(우상향 편향 주의)<br>
-      🩸 <b>하락장 항복</b>: 외국인 상관 ${dm.corr?.["외국인"]??"—"} (투매 극심할수록 반등↑) · 개인 ${dm.corr?.["개인"]??"—"}<br>
-      ⚠️ <b>고점은 예측 불가</b>(리프트<2) — 진단용. 단일 자금흐름 전환도 예측 아님(재현율 착시).
-    </div>
-    <div class="text-[10px] text-[#86868b] mb-2">📐 <b>큰 저점 기준</b>: 국소최저(±40일) + 고점대비 낙폭 −12%↑ + 이후 반등 +12%↑ (16년 KOSPI ${bln}개)</div>
-    <details class="mt-1"><summary class="text-[11px] text-[#0071e3] cursor-pointer select-none py-1">📊 상세 차트 펼치기 (외국인 지분율·자금 이동·저점 궤적)</summary>
+    <details class="mt-1"><summary class="text-[11px] text-[#0071e3] cursor-pointer select-none py-1">📊 무슨 근거인가요? (통계·정밀도)</summary>
+    <div class="panel p-3 mt-2 text-[11px] text-[#515154] leading-relaxed">
+      ✅ <b>저점 신호</b>: 낙폭 −12% + 연기금 매수 → 정밀도 ${conf.precision}%·리프트 ${conf.lift}배 · 큰 저점 12개월 중앙값 ${f12.median}%<br>
+      🩸 <b>하락장 항복</b>: 외국인 상관 ${dm.corr?.["외국인"]??"—"}(투매 극심할수록 반등↑)·개인 ${dm.corr?.["개인"]??"—"}<br>
+      ⚠️ <b>고점은 예측 불가</b>(진단용) · 단일 자금흐름 전환도 예측 아님(재현율 착시)<br>
+      📐 <b>큰 저점 기준</b>: 국소최저(±40일)+낙폭 −12%+반등 +12% (16년 ${bln}개)
+    </div></details>
+    <details id="invChartDet" class="mt-1"><summary class="text-[11px] text-[#0071e3] cursor-pointer select-none py-1">📊 상세 차트 펼치기 (외국인 지분율·자금 이동·저점 궤적)</summary>
     <div class="grid grid-cols-1 gap-3 mt-2">
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">외국인 지분율 추이 <span class="text-[#86868b] font-normal">(보유수량÷상장주식수 — 순매수만 반영, 주가·평가 무관)</span></div><div style="position:relative;height:110px"><canvas id="chartFgPct"></canvas></div></div>
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">최근 자금 이동 <span class="text-[#86868b] font-normal">(60일 순매수 조원) — 🔵외국인 🟣연기금 🟠개인</span></div><div style="position:relative;height:140px"><canvas id="chartRollFlow"></canvas></div></div>
@@ -236,7 +250,7 @@ async function renderInvestor(){
       <div class="text-[10px] text-[#86868b] mt-2">📌 스타일은 <b>국면 조건부</b>(전체 상관은 상쇄 착시). 외국인은 확장에만 역추세(차익), 개인은 확장에만 추격(FOMO), 증권은 확장에만 선행 — <b>확장 후반=외국인 이탈+개인 추격</b>. 상관 ±0.3~0.5(경향, 결정론 아님).</div>
     </div></details>`;
   el.style.display="";
-  const _det=el.querySelector("details"); let _drawn=false;
+  const _det=el.querySelector("#invChartDet"); let _drawn=false;
   const _draw=()=>{ try{
     const fpm=Object.keys(fpct), fpvv=Object.values(fpct);
     lineChart("chartFgPct", fpm, [{data:fpvv, borderColor:"#0a84ff", fill:false, tension:.2, borderWidth:1.5, pointRadius:0}]);
