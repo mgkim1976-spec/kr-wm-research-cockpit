@@ -217,14 +217,15 @@ async function renderInvestor(){
       ⚠️ <b>고점은 예측 불가</b>(리프트<2) — 진단용. 단일 자금흐름 전환도 예측 아님(재현율 착시).
     </div>
     <div class="text-[10px] text-[#86868b] mb-2">📐 <b>큰 저점 기준</b>: 국소최저(±40일) + 고점대비 낙폭 −12%↑ + 이후 반등 +12%↑ (16년 KOSPI ${bln}개)</div>
-    <div class="grid grid-cols-1 gap-3">
+    <details class="mt-1"><summary class="text-[11px] text-[#0071e3] cursor-pointer select-none py-1">📊 상세 차트 펼치기 (외국인 지분율·자금 이동·저점 궤적)</summary>
+    <div class="grid grid-cols-1 gap-3 mt-2">
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">외국인 지분율 추이 <span class="text-[#86868b] font-normal">(보유수량÷상장주식수 — 순매수만 반영, 주가·평가 무관)</span></div><div style="position:relative;height:110px"><canvas id="chartFgPct"></canvas></div></div>
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">최근 자금 이동 <span class="text-[#86868b] font-normal">(60일 순매수 조원) — 🔵외국인 🟣연기금 🟠개인</span></div><div style="position:relative;height:140px"><canvas id="chartRollFlow"></canvas></div></div>
       <div class="panel p-3"><div class="text-[11px] mb-1 font-semibold text-[#1d1d1f]">큰 저점 이후 지수 궤적 <span class="text-[#86868b] font-normal">(중앙값 %, 진입=저점확인일)</span></div><div style="position:relative;height:110px"><canvas id="chartEquity"></canvas></div></div>
-    </div>`;
+    </div></details>`;
   el.style.display="";
-  // 차트 렌더 (innerHTML 후 canvas 존재)
-  try{
+  const _det=el.querySelector("details"); let _drawn=false;
+  const _draw=()=>{ try{
     const fpm=Object.keys(fpct), fpvv=Object.values(fpct);
     lineChart("chartFgPct", fpm, [{data:fpvv, borderColor:"#0a84ff", fill:false, tension:.2, borderWidth:1.5, pointRadius:0}]);
     // 최근 자금 이동 = 60일 롤링 순매수(누적 아님) — 주간 순매수를 60일(≈13주) 롤링합
@@ -237,7 +238,8 @@ async function renderInvestor(){
     const fwd=((K.turning||{}).big_low||{}).forward||{};
     lineChart("chartEquity", ["진입"].concat(hz), [{data:[0].concat(hz.map(h=>(fwd[h]||{}).median)),
       borderColor:"#34c759", backgroundColor:"rgba(52,199,89,.10)", fill:true, tension:.3, borderWidth:2}]);
-  }catch(e){}
+  }catch(e){} };
+  if(_det) _det.addEventListener("toggle",()=>{ if(_det.open&&!_drawn){_drawn=true;_draw();} });
 }
 
 async function renderCli(){
