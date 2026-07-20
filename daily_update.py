@@ -25,6 +25,10 @@ STEPS = [
     [str(Path("app") / "core" / "adapters" / "investor_flow.py")],
     [str(Path("app") / "core" / "adapters" / "investor_pattern.py")],
     ["build_dossiers.py"],
+    # 업종 브리핑북 — 산출물은 Alpha_Stream 에 있지만 대시보드가 읽어 쓰므로
+    # '데이터 수집·반영' 버튼 한 번으로 화면 전체가 같은 시점이 되도록 여기서 함께 돌린다.
+    # (별도로 두면 버튼을 눌러도 ④ 업종 섹션만 낡은 상태로 남는다)
+    [str(Path.home() / "MGPrj" / "Alpha_Stream" / "sector_book.py")],
 ]
 
 
