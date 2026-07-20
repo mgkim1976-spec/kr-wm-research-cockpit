@@ -620,9 +620,22 @@ function sbRender(){
     `<li><b>${m.name||""}</b> — ${m.what||""} <span class="text-[#86868b] text-xs">${m.broker||""}</span></li>`).join("");
   const src = (d.sources||[]).map(x =>
     `<a href="${x.url}" target="_blank" class="underline hover:no-underline">${x.broker} ${x.date}</a>`).join(" · ");
+  // 컨센서스와 이견을 먼저 — 합의된 건 대체로 반영돼 있고, 갈리는 곳에 판단 여지가 있다
+  const cons = (d.consensus||[]).map(c =>
+    `<li class="flex gap-2"><span class="bg-[#34c759] mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"></span>
+     <span>${c.text||""} <span class="text-[#86868b] text-xs">${(c.brokers||[]).join(", ")}</span></span></li>`).join("");
+  const divg = (d.divergence||[]).map(g => `
+    <div class="rounded-xl bg-[#fffbe6] p-3 mb-2">
+      <div class="font-semibold text-sm mb-1.5">쟁점 · ${g.issue||""}</div>
+      ${(g.views||[]).map(v=>`<div class="text-xs mb-0.5">
+        <b>${v.broker||""}</b> — ${v.stance||""}${v.why?` <span class="text-[#86868b]">(${v.why})</span>`:""}</div>`).join("")}
+    </div>`).join("");
   b.innerHTML = `
+    ${cons?`<div class="mb-4"><div class="font-semibold text-sm mb-2">컨센서스 <span class="text-[#86868b] text-xs font-normal">· 복수 증권사 동의</span></div>
+      <ul class="space-y-1.5 text-sm">${cons}</ul></div>`:""}
+    ${divg?`<div class="mb-4"><div class="font-semibold text-sm mb-2">이견 <span class="text-[#86868b] text-xs font-normal">· 시각이 갈리는 지점 — 판단 여지</span></div>${divg}</div>`:""}
     <div class="grid md:grid-cols-2 gap-4 mb-4">
-      <div><div class="font-semibold text-sm mb-2">투자 포인트</div>
+      <div><div class="font-semibold text-sm mb-2">개별 견해</div>
         <ul class="space-y-1.5 text-sm">${li(d.points,"bg-[#0071e3]")||'<li class="text-[#86868b]">—</li>'}</ul></div>
       <div><div class="font-semibold text-sm mb-2">리스크</div>
         <ul class="space-y-1.5 text-sm">${li(d.risks,"bg-[#ff3b30]")||'<li class="text-[#86868b]">—</li>'}</ul></div>
