@@ -108,6 +108,18 @@
       <div id="briefSegments" class="space-y-2"></div>
     </section>
 
+    <!-- ④ 업종 브리핑북 -->
+    <section class="card p-6 mb-6">
+      <h2 class="sec mb-1">④ 업종 브리핑북 <span id="sbMeta" class="text-[#86868b] text-xs font-normal"></span></h2>
+      <div class="text-xs text-[#86868b] mb-3">
+        증권사 산업분석 리포트를 업종별로 정리 — 투자 포인트 · 리스크 · 최선호주.
+        <b>이유는 산업 요인과 기업 요인으로 나눠</b> 표시합니다(업종을 사는 것과 그 종목을 사는 것은 다른 판단이라).
+        리포트에 명시되지 않은 최선호주·비선호주는 비워 둡니다.
+      </div>
+      <div id="sbTabs" class="flex flex-wrap gap-1.5 mb-4"></div>
+      <div id="sbBody"></div>
+    </section>
+
     <!-- 💬 오늘 상담 메시지 -->
     <section class="card p-6 mb-6">
       <h2 class="sec mb-3">💬 오늘 상담 메시지 <span class="text-[#86868b] text-xs font-normal">· 시황 주요 이슈별 상담 톤</span></h2>
@@ -587,6 +599,57 @@ setInterval(refreshAll, 3600000);   // 1시간마다 캐시 재조회(가벼움)
 refreshAll();
 // 진행 중인 수집(버튼 트리거)이 있으면 상태 이어받기
 fetch("/api/collect/status").then(r=>r.json()).then(st=>{ if(st.running){ POLLING=true; pollCollect(); } }).catch(()=>{});
+
+// ── 업종 브리핑북 ──
+let SB = {}, sbCur = "";
+function sbRender(){
+  const d = SB[sbCur]; const b = document.getElementById("sbBody");
+  if(!d){ b.innerHTML = '<div class="text-sm text-[#86868b]">업종을 선택하세요.</div>'; return; }
+  const li = (a,cls) => (a||[]).map(x =>
+    `<li class="flex gap-2"><span class="${cls} mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"></span>
+     <span>${x.text||""} <span class="text-[#86868b] text-xs">${x.broker||""}</span></span></li>`).join("");
+  const pick = (t, o, tone) => {
+    if(!o || !o.name) return `<div class="text-sm text-[#86868b]">${t}: 리포트에 명시 없음</div>`;
+    return `<div class="rounded-xl p-3 ${tone}">
+      <div class="font-semibold text-sm mb-1">${t} · ${o.name}
+        <span class="text-[#86868b] text-xs font-normal">${o.broker||""}</span></div>
+      ${o.industry?`<div class="text-xs mb-0.5"><b>산업 요인</b> · ${o.industry}</div>`:""}
+      ${o.company?`<div class="text-xs"><b>기업 요인</b> · ${o.company}</div>`:""}</div>`;
+  };
+  const men = (d.mentioned||[]).map(m =>
+    `<li><b>${m.name||""}</b> — ${m.what||""} <span class="text-[#86868b] text-xs">${m.broker||""}</span></li>`).join("");
+  const src = (d.sources||[]).map(x =>
+    `<a href="${x.url}" target="_blank" class="underline hover:no-underline">${x.broker} ${x.date}</a>`).join(" · ");
+  b.innerHTML = `
+    <div class="grid md:grid-cols-2 gap-4 mb-4">
+      <div><div class="font-semibold text-sm mb-2">투자 포인트</div>
+        <ul class="space-y-1.5 text-sm">${li(d.points,"bg-[#0071e3]")||'<li class="text-[#86868b]">—</li>'}</ul></div>
+      <div><div class="font-semibold text-sm mb-2">리스크</div>
+        <ul class="space-y-1.5 text-sm">${li(d.risks,"bg-[#ff3b30]")||'<li class="text-[#86868b]">—</li>'}</ul></div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3 mb-4">
+      ${pick("최선호주", d.top_pick, "bg-[#f0f7ff]")}
+      ${pick("비선호주", d.avoid, "bg-[#fff5f5]")}
+    </div>
+    ${men?`<div class="mb-3"><div class="font-semibold text-sm mb-1.5">리포트에 언급된 종목</div>
+      <ul class="space-y-1 text-sm list-disc pl-5">${men}</ul></div>`:""}
+    <div class="text-xs text-[#86868b] pt-3 border-t border-[#e8e8ed]">출처 · ${src||"—"}</div>`;
+}
+function sbTabs(){
+  const t = document.getElementById("sbTabs");
+  const keys = Object.keys(SB).filter(k => !k.startsWith("_"));
+  if(!keys.length){ t.innerHTML = '<span class="text-sm text-[#86868b]">브리핑북 없음 — Alpha_Stream 에서 sector_book.py 실행</span>'; return; }
+  sbCur = sbCur || keys[0];
+  t.innerHTML = keys.map(k =>
+    `<button data-s="${k}" class="px-3 py-1.5 rounded-full text-sm border ${k===sbCur
+      ? 'bg-[#1d1d1f] text-white border-[#1d1d1f]' : 'bg-white text-[#1d1d1f] border-[#d2d2d7]'}">${k}</button>`).join("");
+  t.querySelectorAll("button").forEach(x => x.onclick = () => { sbCur = x.dataset.s; sbTabs(); sbRender(); });
+  const any = SB[keys[0]];
+  document.getElementById("sbMeta").textContent = any ? `· ${keys.length}개 업종 · ${any.updated||""} 기준` : "";
+}
+fetch("/api/sectors").then(r=>r.json()).then(d=>{ SB=d||{}; sbTabs(); sbRender(); })
+  .catch(()=>{ document.getElementById("sbTabs").innerHTML='<span class="text-sm text-[#86868b]">불러오기 실패</span>'; });
+
 </script>
 </body>
 </html>

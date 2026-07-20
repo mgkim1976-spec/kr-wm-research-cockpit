@@ -15,6 +15,7 @@ import sys
 import threading
 from pathlib import Path
 
+import json
 from flask import Flask, jsonify, render_template, request
 
 APP_DIR = Path(__file__).resolve().parent
@@ -90,6 +91,19 @@ def api_brief():
     """③ 고객 관리 우선순위: 시황 기반 고객 세그먼트 우선순위 + 쏠림 경보."""
     days = request.args.get("days", default=45, type=int)
     return jsonify(se.contact_priority(days=days))
+
+
+# 업종 브리핑북 — Alpha_Stream 의 sector_book.py 가 네이버 산업분석 리포트를 정리해 둔 파일.
+# 생성은 그쪽에서, 열람은 여기서. dossiers.json 을 Alpha_Stream 이 읽어가는 것과 대칭이다.
+SECTOR_BOOK = Path.home() / "MGPrj" / "Alpha_Stream" / "data" / "sector_book.json"
+
+
+@app.route("/api/sectors")
+def api_sectors():
+    try:
+        return jsonify(json.loads(SECTOR_BOOK.read_text(encoding="utf-8")))
+    except Exception as e:
+        return jsonify({"_error": str(e)})
 
 
 @app.route("/api/collect", methods=["POST"])
