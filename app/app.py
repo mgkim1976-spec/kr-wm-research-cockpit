@@ -15,8 +15,10 @@ import sys
 import threading
 from pathlib import Path
 
+import glob
 import json
-from flask import Flask, jsonify, render_template, request
+import os
+from flask import Flask, jsonify, render_template, request, send_file
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -118,6 +120,69 @@ def api_collect():
 @app.route("/api/collect/status")
 def api_collect_status():
     return jsonify(COLLECT)
+
+
+# ── 업종 브리핑 인포그래픽(스퀘어) — 브리핑북 → 업종별 공유용 카드 ──────────────
+# 생성기는 Alpha_Stream 에 있고(sector_card.py), 여기서는 '현재 브리핑북 그대로' 빠르게 재생성만
+# 트리거한다(재크롤·LLM 없음). 전체 리프레시+생성은 '데이터 수집·반영'(daily_update)이 담당.
+SECTOR_CARD = Path.home() / "MGPrj" / "Alpha_Stream" / "dataviz" / "sector_card.py"
+CARDGEN = {"running": False, "started": None, "finished": None, "rc": None, "count": 0}
+
+
+def _card_dir() -> Path:
+    return Path.home() / "MGPrj" / "Alpha_Stream" / "data" / datetime.date.today().isoformat()
+
+
+def _run_cardgen() -> None:
+    CARDGEN.update(running=True, started=datetime.datetime.now().strftime("%H:%M:%S"),
+                   finished=None, rc=None)
+    try:
+        r = subprocess.run([sys.executable, str(SECTOR_CARD), "--all"],
+                           cwd=str(SECTOR_CARD.parent), capture_output=True, text=True, timeout=900)
+        CARDGEN["rc"] = r.returncode
+    except Exception as e:   # noqa: BLE001
+        CARDGEN["rc"] = -1
+        CARDGEN["error"] = str(e)[:200]
+    finally:
+        CARDGEN["count"] = len(glob.glob(str(_card_dir() / "업종브리핑_*_시트*.png")))
+        CARDGEN["running"] = False
+        CARDGEN["finished"] = datetime.datetime.now().strftime("%H:%M:%S")
+
+
+@app.route("/api/sector_cards", methods=["POST"])
+def api_sector_cards():
+    """현재 브리핑북으로 업종별 스퀘어 인포그래픽 비동기 생성(재크롤 없음)."""
+    if CARDGEN["running"]:
+        return jsonify({"status": "running", **CARDGEN})
+    threading.Thread(target=_run_cardgen, daemon=True).start()
+    return jsonify({"status": "started", **CARDGEN})
+
+
+@app.route("/api/sector_cards/status")
+def api_sector_cards_status():
+    return jsonify(CARDGEN)
+
+
+@app.route("/api/sector_cards/gallery")
+def api_sector_cards_gallery():
+    """오늘 생성된 인포그래픽 목록(인덱스 + 업종별 시트 파일명)."""
+    d = _card_dir()
+    idx = sorted(glob.glob(str(d / "업종브리핑_전체인덱스*.png")))
+    sheets = sorted(glob.glob(str(d / "업종브리핑_*_시트*.png")))
+    return jsonify({"date": datetime.date.today().isoformat(),
+                    "index": os.path.basename(idx[-1]) if idx else None,
+                    "sheets": [os.path.basename(p) for p in sheets]})
+
+
+@app.route("/api/sector_cards/file")
+def api_sector_cards_file():
+    """오늘 폴더의 PNG 한 장 서빙(경로 탈출 차단)."""
+    name = request.args.get("name", "")
+    d = _card_dir().resolve()
+    p = (d / name).resolve()
+    if not str(p).startswith(str(d) + os.sep) or p.suffix.lower() != ".png" or not p.exists():
+        return ("not found", 404)
+    return send_file(str(p), mimetype="image/png")
 
 
 if __name__ == "__main__":

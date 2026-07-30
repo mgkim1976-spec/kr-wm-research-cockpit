@@ -29,6 +29,8 @@ STEPS = [
     # '데이터 수집·반영' 버튼 한 번으로 화면 전체가 같은 시점이 되도록 여기서 함께 돌린다.
     # (별도로 두면 버튼을 눌러도 ④ 업종 섹션만 낡은 상태로 남는다)
     [str(Path.home() / "MGPrj" / "Alpha_Stream" / "sector_book.py")],
+    # 업종 브리핑북 → 업종별 스퀘어 인포그래픽(공유용). 브리핑북 갱신 직후 같은 시점으로 재생성.
+    [str(Path.home() / "MGPrj" / "Alpha_Stream" / "dataviz" / "sector_card.py"), "--all"],
 ]
 
 
