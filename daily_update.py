@@ -55,14 +55,21 @@ STEPS = [
     [str(Path.home() / "MGPrj" / "Alpha_Stream" / "sector_book.py")],
 ]
 
+STEP_TIMEOUT = 1800   # 초
+
 
 def main():
     print(f"=== {datetime.now():%Y-%m-%d %H:%M:%S} 일일 업데이트 시작 ===")
     for args in STEPS:
         print(f"\n>>> python {' '.join(args)}")
-        r = subprocess.run([sys.executable, *args], cwd=str(ROOT))
-        if r.returncode != 0:
-            print(f"  [경고] 종료코드 {r.returncode} — 계속 진행")
+        # pykrx 등은 요청 제한 시간이 없어 서버가 응답을 끊지 않으면 영원히 기다린다
+        # (2026-09-09 investor_flow.py 가 13일 멈춤 → launchd 가 새 실행을 막아 전체 갱신 중단). 단계별 30분 상한.
+        try:
+            r = subprocess.run([sys.executable, *args], cwd=str(ROOT), timeout=STEP_TIMEOUT)
+            if r.returncode != 0:
+                print(f"  [경고] 종료코드 {r.returncode} — 계속 진행")
+        except subprocess.TimeoutExpired:
+            print(f"  [경고] {STEP_TIMEOUT // 60}분 초과로 중단 — 계속 진행")
     print(f"\n=== {datetime.now():%Y-%m-%d %H:%M:%S} 완료 ===")
 
 
